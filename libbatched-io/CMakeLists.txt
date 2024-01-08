@@ -9,4 +9,4 @@ target_include_directories( devcore PRIVATE
         ../libdevcore
         )
 
-target_link_libraries( batched-io PRIVATE leveldb::leveldb boost_filesystem devcore)
+target_link_libraries( batched-io PRIVATE leveldb boost_filesystem devcore)

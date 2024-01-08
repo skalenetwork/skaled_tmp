@@ -297,6 +297,7 @@ setup_variable WITH_WANGLE "yes"
 setup_variable WITH_GTEST "yes"
 setup_variable WITH_FIZZ "yes"
 setup_variable WITH_PROXYGEN "yes"
+setup_variable WITH_LEVELDB "yes"
 
 if [ -z "${PARALLEL_COUNT}" ];
 then
@@ -610,6 +611,7 @@ echo -e "${COLOR_VAR_NAME}WITH_WANGLE${COLOR_DOTS}............${COLOR_VAR_DESC}L
 echo -e "${COLOR_VAR_NAME}WITH_GTEST${COLOR_DOTS}.............${COLOR_VAR_DESC}LibGTEST${COLOR_DOTS}...............................${COLOR_VAR_VAL}$WITH_GTEST${COLOR_RESET}"
 echo -e "${COLOR_VAR_NAME}WITH_FIZZ${COLOR_DOTS}..............${COLOR_VAR_DESC}LibFIZZ${COLOR_DOTS}................................${COLOR_VAR_VAL}$WITH_FIZZ${COLOR_RESET}"
 echo -e "${COLOR_VAR_NAME}WITH_PROXYGEN${COLOR_DOTS}..........${COLOR_VAR_DESC}LibProxygen${COLOR_DOTS}............................${COLOR_VAR_VAL}$WITH_PROXYGEN${COLOR_RESET}"
+echo -e "${COLOR_VAR_NAME}WITH_LEVELDB${COLOR_DOTS}..........${COLOR_VAR_DESC}LibLevelDB${COLOR_DOTS}............................${COLOR_VAR_VAL}$WITH_LEVELDB${COLOR_RESET}"
 
 #
 #
@@ -2319,6 +2321,49 @@ then
         sed -i 's/if (FLAGS_request_number)/   \/*   if (FLAGS_request_number)   *\/   /g' ./proxygen/httpserver/samples/echo/EchoHandler.cpp
 		echo -e "${COLOR_INFO}building it${COLOR_DOTS}...${COLOR_RESET}"
 		cd build2
+		eval "$MAKE" "${PARALLEL_MAKE_OPTIONS}"
+		eval "$MAKE" "${PARALLEL_MAKE_OPTIONS}" install
+		cd "$SOURCES_ROOT"
+	else
+		echo -e "${COLOR_SUCCESS}SKIPPED${COLOR_RESET}"
+	fi
+fi
+
+if [ "$WITH_LEVELDB" = "yes" ];
+then
+	echo -e "${COLOR_SEPARATOR}==================== ${COLOR_PROJECT_NAME}libLevelDB${COLOR_SEPARATOR} ==================================${COLOR_RESET}"
+	if [ ! -f "$INSTALL_ROOT/lib/libleveldb.a" ];
+	then
+		env_restore
+		cd "$SOURCES_ROOT"
+		if [ ! -d "leveldb" ];
+		then
+			if [ ! -f "leveldb-from-git.tar.gz" ];
+			then
+				echo -e "${COLOR_INFO}getting it from git${COLOR_DOTS}...${COLOR_RESET}"
+				eval git clone https://github.com/google/leveldb.git --recursive
+                cd leveldb
+                eval git checkout 1.22
+                cd ..
+				echo -e "${COLOR_INFO}archiving it${COLOR_DOTS}...${COLOR_RESET}"
+				eval tar -czf leveldb-from-git.tar.gz ./leveldb
+			else
+				echo -e "${COLOR_INFO}unpacking it${COLOR_DOTS}...${COLOR_RESET}"
+				eval tar -xzf leveldb-from-git.tar.gz
+			fi
+			echo -e "${COLOR_INFO}configuring it${COLOR_DOTS}...${COLOR_RESET}"
+			cd leveldb
+			sed -i  's/int g_mmap_limit = kDefaultMmapLimit;\+/int g_mmap_limit = 0;/g' ./util/env_posix.cc
+			eval mkdir -p build
+			cd build
+			eval "$CMAKE" .. "${CMAKE_CROSSCOMPILING_OPTS}" -DCMAKE_INSTALL_PREFIX="$INSTALL_ROOT" -DCMAKE_BUILD_TYPE="$TOP_CMAKE_BUILD_TYPE" \
+                -DLEVELDB_BUILD_TESTS=OFF -DLEVELDB_BUILD_BENCHMARKS=OFF
+			cd ..
+		else
+			cd leveldb
+		fi
+		echo -e "${COLOR_INFO}building it${COLOR_DOTS}...${COLOR_RESET}"
+		cd build
 		eval "$MAKE" "${PARALLEL_MAKE_OPTIONS}"
 		eval "$MAKE" "${PARALLEL_MAKE_OPTIONS}" install
 		cd "$SOURCES_ROOT"
