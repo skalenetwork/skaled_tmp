@@ -5,7 +5,7 @@ set -e
 : "${VERSION?Need to set VERSION}"
 : "${BRANCH?Need to set BRANCH}"
 
-NAME=schain
+NAME=schain_tmp_test
 REPO_NAME=skalenetwork/$NAME
 IMAGE_NAME=$REPO_NAME:$VERSION
 
