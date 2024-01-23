@@ -20,7 +20,7 @@ on:
         required: true
         options: 
         - Debug
-        - Release
+        - RelWithDebInfo
         default: Debug
 
 jobs:
