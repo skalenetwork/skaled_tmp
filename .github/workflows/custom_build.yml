@@ -30,6 +30,7 @@ jobs:
         ACTIONS_ALLOW_UNSECURE_COMMANDS: true
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        BUILD_TYPE: ${{ github.event.inputs.build_type }}
     steps:
       - name: update apt
         run: sudo add-apt-repository ppa:ubuntu-toolchain-r/test; sudo apt-get update
@@ -102,7 +103,7 @@ jobs:
           export CC=gcc-9
           export CXX=g++-9
           export TARGET=all
-          export CMAKE_BUILD_TYPE=${{ github.event.inputs.build_type }}
+          export CMAKE_BUILD_TYPE=$BUILD_TYPE
           cd deps
           ./clean.sh
           rm -f ./libwebsockets-from-git.tar.gz
@@ -114,7 +115,7 @@ jobs:
           export CC=gcc-9
           export CXX=g++-9
           export TARGET=all
-          export CMAKE_BUILD_TYPE=${{ github.event.inputs.build_type }}
+          export CMAKE_BUILD_TYPE=$BUILD_TYPE
           mkdir -p build
           cd build
           cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE ${{ github.event.inputs.cmake_options }} ..
@@ -124,7 +125,7 @@ jobs:
           export CC=gcc-9
           export CXX=g++-9
           export TARGET=all
-          export CMAKE_BUILD_TYPE=${{ github.event.inputs.build_type }}
+          export CMAKE_BUILD_TYPE=$BUILD_TYPE
           cd build
           make skaled -j$(nproc)
           #echo "Ensure release mode skaled does not have any debug markers"
@@ -135,7 +136,8 @@ jobs:
         run: |
           cp build/skaled/skaled scripts/skale_build/executable/
           export BRANCH=${{ github.event.inputs.branch_name }}
-          export VERSION=${{ github.event.inputs.image_version }}-${{ github.event.inputs.build_type }}
+          ( test $BUILD_TYPE = "Debug" && export SUFFIX=debug ) || export SUFFIX=release
+          export VERSION=${{ github.event.inputs.image_version }}-$SUFFIX
           echo "Version $VERSION"
           export RELEASE=true
           bash ./scripts/build_and_publish.sh
