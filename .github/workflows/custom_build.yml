@@ -21,7 +21,7 @@ on:
         options: 
         - Debug
         - RelWithDebInfo
-        default: Debug
+        default: RelWithDebInfo
 
 jobs:
   main_job:
@@ -124,7 +124,7 @@ jobs:
           export CC=gcc-9
           export CXX=g++-9
           export TARGET=all
-          export CMAKE_BUILD_TYPE=Debug
+          export CMAKE_BUILD_TYPE=${{ github.event.inputs.build_type }}
           cd build
           make skaled -j$(nproc)
           #echo "Ensure release mode skaled does not have any debug markers"
@@ -135,7 +135,7 @@ jobs:
         run: |
           cp build/skaled/skaled scripts/skale_build/executable/
           export BRANCH=${{ github.event.inputs.branch_name }}
-          export VERSION=${{ github.event.inputs.image_version }}
+          export VERSION=${{ github.event.inputs.image_version }}-${{ github.event.inputs.build_type }}
           echo "Version $VERSION"
           export RELEASE=true
           bash ./scripts/build_and_publish.sh
