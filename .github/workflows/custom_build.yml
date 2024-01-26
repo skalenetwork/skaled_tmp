@@ -107,7 +107,7 @@ jobs:
           cd deps
           ./clean.sh
           rm -f ./libwebsockets-from-git.tar.gz
-          ( test $CMAKE_BUILD_TYPE = "Debug" && export DEBUG_FLAG=1 ) || export DEBUG_FLAG=0
+          [[ $CMAKE_BUILD_TYPE = "Debug" ]] && export DEBUG_FLAG=1 || export DEBUG_FLAG=0
           ./build.sh PARALLEL_COUNT=$(nproc) DEBUG=$DEBUG_FLAG
           cd ..
       - name: Configure all
@@ -136,7 +136,7 @@ jobs:
         run: |
           cp build/skaled/skaled scripts/skale_build/executable/
           export BRANCH=${{ github.event.inputs.branch_name }}
-          ( test $BUILD_TYPE = "Debug" && export SUFFIX=debug ) || export SUFFIX=release
+          [[ $BUILD_TYPE = "Debug" ]] && export SUFFIX=debug || export SUFFIX=release
           export VERSION=${{ github.event.inputs.image_version }}-$SUFFIX
           echo "Version $VERSION"
           export RELEASE=true
