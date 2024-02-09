@@ -1,4 +1,5 @@
 name: Build and test skaled
+
 on:
   push:
     branches-ignore:
