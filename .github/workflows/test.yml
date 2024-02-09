@@ -6,6 +6,10 @@ on:
       - 'master'
       - 'beta'
       - 'stable'
+  check_run:
+    workflows: ["Build and publish skaled container"]
+    types:
+      - completed
 defaults:
   run:
     shell: bash
