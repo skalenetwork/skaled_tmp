@@ -6,10 +6,6 @@ on:
       - 'master'
       - 'beta'
       - 'stable'
-  check_run:
-    workflows: ["Build and publish skaled container"]
-    types:
-      - completed
 defaults:
   run:
     shell: bash
@@ -43,7 +39,9 @@ jobs:
           key: ${{ runner.os }}-apt-cache
           ttl: 1000000 # purge cache every 1000000 seconds (10 days). This is to pull updated packages
       - name: update apt
-        run: sudo add-apt-repository ppa:ubuntu-toolchain-r/test; sudo apt-get update
+        run: | 
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test || true
+          sudo apt-get update || true
       - name: install packages
         run: |
           sudo apt-get -y remove libzmq* || true
