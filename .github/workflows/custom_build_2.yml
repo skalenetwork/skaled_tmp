@@ -36,7 +36,7 @@ on:
 jobs:
   core_build:
     if: github.event.inputs.node_type == 'Core' || github.event.inputs.node_type == 'All'
-    uses: ./.github/workflows/internal/setup-build-publish.yml
+    uses: ./.github/workflows/setup-build-publish.yml
     with:
       image_version: ${{ github.event.inputs.image_version }}
       branch_name: ${{ github.event.inputs.branch_name }}
@@ -46,7 +46,7 @@ jobs:
 
   historic_build:
     if: github.event.inputs.node_type == 'Historic' || github.event.inputs.node_type == 'All'
-    uses: ./.github/workflows/internal/setup-build-publish.yml
+    uses: ./.github/workflows/setup-build-publish.yml
     with:
       image_version: ${{ github.event.inputs.image_version }}
       branch_name: ${{ github.event.inputs.branch_name }}
