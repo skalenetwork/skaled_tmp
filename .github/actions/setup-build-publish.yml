@@ -16,7 +16,6 @@ inputs:
   node_type:
     description: 'Node type of skaled build'
     required: true
-
 runs:
   using: 'composite'
   env:
