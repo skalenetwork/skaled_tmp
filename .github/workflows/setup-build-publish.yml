@@ -49,6 +49,7 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
+          echo ${{ github.event.inputs.node_type }}
           export BRANCH=${{ github.event.inputs.branch_name }}
           export RELEASE=true
           echo $VERSION
