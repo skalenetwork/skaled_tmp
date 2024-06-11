@@ -23,8 +23,8 @@ on:
         - Debug
         - RelWithDebInfo
         default: RelWithDebInfo
-      node_type:
-        description: 'Node type of skaled build'
+      skaled_type:
+        description: 'Type of skaled build'
         type: choice
         required: true
         options: 
@@ -35,7 +35,7 @@ on:
 
 jobs:
   core_build:
-    if: github.event.inputs.node_type == 'Core' || github.event.inputs.node_type == 'All'
+    if: github.event.inputs.skaled_type == 'Core' || github.event.inputs.skaled_type == 'All'
     uses: ./.github/workflows/setup-build-publish.yml
     with:
       image_version: ${{ github.event.inputs.image_version }}
@@ -45,7 +45,7 @@ jobs:
       node_type: Core
 
   historic_build:
-    if: github.event.inputs.node_type == 'Historic' || github.event.inputs.node_type == 'All'
+    if: github.event.inputs.skaled_type == 'Historic' || github.event.inputs.skaled_type == 'All'
     uses: ./.github/workflows/setup-build-publish.yml
     with:
       image_version: ${{ github.event.inputs.image_version }}
