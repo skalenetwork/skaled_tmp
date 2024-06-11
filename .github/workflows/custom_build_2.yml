@@ -1,4 +1,4 @@
-name: Custom Docker and Binary
+name: Test Custom Docker and Binary
 
 on:
   workflow_dispatch:
