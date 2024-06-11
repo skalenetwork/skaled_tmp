@@ -1,0 +1,55 @@
+name: Custom Docker and Binary
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: 'Branch name'
+        default: ''
+        required: true
+      image_version:
+        description: 'Image version for docker hub'
+        default: ''
+        required: true
+      cmake_options:
+        description: 'Additional cmake options'
+        default: ''
+        required: false
+      build_type:
+        description: 'Build type of skaled binary'
+        type: choice
+        required: true
+        options: 
+        - Debug
+        - RelWithDebInfo
+        default: RelWithDebInfo
+      node_type:
+        description: 'Node type of skaled build'
+        type: choice
+        required: true
+        options: 
+        - Core
+        - Historic
+        - All
+        default: Core
+
+jobs:
+  core_build:
+    if: github.event.inputs.node_type == 'Core' || github.event.inputs.node_type == 'All'
+    uses: ./.github/workflows/internal/setup-build-publish.yml
+    with:
+      image_version: ${{ github.event.inputs.image_version }}
+      branch_name: ${{ github.event.inputs.branch_name }}
+      cmake_options: ${{ github.event.inputs.cmake_options }}
+      build_type: ${{ github.event.inputs.build_type }}
+      node_type: Core
+
+  historic_build:
+    if: github.event.inputs.node_type == 'Historic' || github.event.inputs.node_type == 'All'
+    uses: ./.github/workflows/internal/setup-build-publish.yml
+    with:
+      image_version: ${{ github.event.inputs.image_version }}
+      branch_name: ${{ github.event.inputs.branch_name }}
+      cmake_options: ${{ github.event.inputs.cmake_options }}
+      build_type: ${{ github.event.inputs.build_type }}
+      node_type: Historic
