@@ -31,7 +31,25 @@ jobs:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       BUILD_TYPE: ${{ inputs.build_type }}
     steps:
+      - name: Prepare workflow variables
+        if: inputs.node_type != 'Historic'
+        run: |
+          [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
+          export VERSION=${{ inputs.image_version }}-$VERSION_SUFFIX
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          export CMAKE_OPTS="${{ inputs.cmake_options }}"
+          echo "CMAKE_OPTS=$CMAKE_OPTS" >> $GITHUB_ENV
+      - name: Prepare workflow variables (historic)
+        if: inputs.node_type == 'Historic'
+        run: |
+          [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
+          export VERSION=${{ inputs.image_version }}-$VERSION_SUFFIX-historic
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          export CMAKE_OPTS="-DHISTORIC_STATE=1 ${{ inputs.cmake_options }}"
+          echo "CMAKE_OPTS=$CMAKE_OPTS" >> $GITHUB_ENV
       - name: update apt
+        env:
+          CMAKE_OPTS: ${{ env.CMAKE_OPTS }}
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test || true 
           sudo apt-get update || true
@@ -109,6 +127,8 @@ jobs:
           ./build.sh PARALLEL_COUNT=$(nproc) DEBUG=$DEBUG_FLAG
           cd ..
       - name: Configure all
+        env:
+          CMAKE_OPTS: ${{ env.CMAKE_OPTS }}
         run: |
           export CC=gcc-9
           export CXX=g++-9
@@ -116,7 +136,7 @@ jobs:
           export CMAKE_BUILD_TYPE=$BUILD_TYPE
           mkdir -p build
           cd build
-          cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE ${{ inputs.cmake_options }} ..
+          cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE $CMAKE_OPTS ..
           cd ..
       - name: Build all
         run: |
@@ -127,19 +147,6 @@ jobs:
           cd build
           make skaled -j$(nproc)
           cd ..
-      - name: Compose docker image name
-        if: inputs.node_type != 'Historic'
-        run: |
-          [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
-          export VERSION=${{ inputs.image_version }}-$VERSION_SUFFIX
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-  
-      - name: Compose docker image name (historic)
-        if: inputs.node_type == 'Historic'
-        run: |
-          [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
-          export VERSION=${{ inputs.image_version }}-$VERSION_SUFFIX-historic
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Build and publish container
         env:
