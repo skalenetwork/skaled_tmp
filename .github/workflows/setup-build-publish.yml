@@ -2,22 +2,6 @@ name: 'Setup, Build and Publish'
 on:
   workflow_call:
     inputs:
-      branch_name:
-        type: string
-        description: 'Branch name'
-        required: true
-      image_version:
-        type: string
-        description: 'Image version for docker hub'
-        required: true
-      cmake_options:
-        type: string
-        description: 'Additional cmake options'
-        required: false
-      build_type:
-        type: string
-        description: 'Build type of skaled binary'
-        required: true
       node_type:
         type: string
         description: 'Node type of skaled build'
@@ -25,33 +9,17 @@ on:
 jobs:
   main:
     runs-on: ubuntu-latest
-    env:
-        ACTIONS_ALLOW_UNSECURE_COMMANDS: true
-        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        BUILD_TYPE: ${{ github.event.inputs.build_type }}
-        NODE_TYPE: ${{ github.event.inputs.node_type }}
     steps:  
       - name: Compose docker image name
-        if: github.event.inputs.node_type != 'Historic'
+        if: ${{ inputs.node_type }} != 'Historic'
         run: |
           [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
           export VERSION=${{ github.event.inputs.image_version }}-$VERSION_SUFFIX
           echo "VERSION=$VERSION" >> $GITHUB_ENV
   
       - name: Compose docker image name (historic)
-        if: github.event.inputs.node_type == 'Historic'
+        if: ${{ inputs.node_type }} == 'Historic'
         run: |
           [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
           export VERSION=${{ github.event.inputs.image_version }}-$VERSION_SUFFIX-historic
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-  
-      - name: Build and publish container
-        env:
-          VERSION: ${{ env.VERSION }}
-          TEMP: ${{ github.event.inputs.node_type }}
-        run: |
-          echo $TEMP
-          export BRANCH=${{ github.event.inputs.branch_name }}
-          export RELEASE=true
-          echo $VERSION
