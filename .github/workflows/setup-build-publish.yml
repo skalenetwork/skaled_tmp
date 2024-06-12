@@ -33,14 +33,14 @@ jobs:
         NODE_TYPE: ${{ github.event.inputs.node_type }}
     steps:  
       - name: Compose docker image name
-        if: ${{ github.event.inputs.node_type }} != 'Historic'
+        if: github.event.inputs.node_type != 'Historic'
         run: |
           [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
           export VERSION=${{ github.event.inputs.image_version }}-$VERSION_SUFFIX
           echo "VERSION=$VERSION" >> $GITHUB_ENV
   
       - name: Compose docker image name (historic)
-        if: ${{ github.event.inputs.node_type }} == 'Historic'
+        if: github.event.inputs.node_type == 'Historic'
         run: |
           [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
           export VERSION=${{ github.event.inputs.image_version }}-$VERSION_SUFFIX-historic
