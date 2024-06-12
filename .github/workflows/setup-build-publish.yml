@@ -2,6 +2,22 @@ name: 'Setup, Build and Publish'
 on:
   workflow_call:
     inputs:
+      branch_name:
+        type: string
+        description: 'Branch name'
+        required: true
+      image_version:
+        type: string
+        description: 'Image version for docker hub'
+        required: true
+      cmake_options:
+        type: string
+        description: 'Additional cmake options'
+        required: false
+      build_type:
+        type: string
+        description: 'Build type of skaled binary'
+        required: true
       node_type:
         type: string
         description: 'Node type of skaled build'
