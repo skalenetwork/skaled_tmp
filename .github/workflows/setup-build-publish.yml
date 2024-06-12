@@ -24,7 +24,7 @@ on:
         required: true
 jobs:
   main:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     env:
       ACTIONS_ALLOW_UNSECURE_COMMANDS: true
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
