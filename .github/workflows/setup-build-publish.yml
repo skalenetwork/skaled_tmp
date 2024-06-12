@@ -48,8 +48,9 @@ jobs:
       - name: Build and publish container
         env:
           VERSION: ${{ env.VERSION }}
+          TEMP: ${{ github.event.inputs.node_type }}
         run: |
-          echo ${{ github.event.inputs.node_type }}
+          echo $TEMP
           export BRANCH=${{ github.event.inputs.branch_name }}
           export RELEASE=true
           echo $VERSION
