@@ -251,8 +251,7 @@ void downloadSnapshot( unsigned block_number, std::shared_ptr< SnapshotManager >
     const std::string& strURLWeb3, const ChainParams& chainParams ) {
     fs::path saveTo;
     try {
-        clog( VerbosityInfo, "downloadSnapshot" )
-            << cc::normal( "Will download snapshot from " ) << cc::u( strURLWeb3 ) << std::endl;
+        clog( VerbosityInfo, "downloadSnapshot" ) << "Will download snapshot from " << strURLWeb3;
 
         try {
             bool isBinaryDownload = true;
@@ -262,11 +261,10 @@ void downloadSnapshot( unsigned block_number, std::shared_ptr< SnapshotManager >
                 strURLWeb3, block_number, saveTo,
                 [&]( size_t idxChunck, size_t cntChunks ) -> bool {
                     clog( VerbosityInfo, "downloadSnapshot" )
-                        << cc::normal( "... download progress ... " ) << cc::size10( idxChunck )
-                        << cc::normal( " of " ) << cc::size10( cntChunks ) << "\r";
+                        << "... download progress ... " << idxChunck << " of " << cntChunks << "\r";
                     return true;  // continue download
                 },
-                isBinaryDownload, &strErrorDescription, chainParams.nodeInfo.archiveMode );
+                isBinaryDownload, &strErrorDescription );
             std::cout << "                                                  \r";  // clear
                                                                                   // progress
                                                                                   // line
@@ -281,14 +279,12 @@ void downloadSnapshot( unsigned block_number, std::shared_ptr< SnapshotManager >
             std::throw_with_nested( std::runtime_error( "Exception while downloading snapshot" ) );
         }
         clog( VerbosityInfo, "downloadSnapshot" )
-            << cc::success( "Snapshot download success for block " )
-            << cc::u( to_string( block_number ) ) << std::endl;
+            << "Snapshot download success for block " << to_string( block_number );
         try {
             snapshotManager->importDiff( block_number );
         } catch ( ... ) {
-            std::throw_with_nested( std::runtime_error(
-                cc::fatal( "FATAL:" ) + " " +
-                cc::error( "Exception while importing downloaded snapshot: " ) ) );
+            std::throw_with_nested(
+                std::runtime_error( "FATAL: Exception while importing downloaded snapshot: " ) );
         }
 
         /// HACK refactor this piece of code! ///
@@ -304,7 +300,7 @@ void downloadSnapshot( unsigned block_number, std::shared_ptr< SnapshotManager >
             }
             if ( db_path.empty() ) {
                 clog( VerbosityError, "downloadSnapshot" )
-                    << cc::fatal( "Snapshot downloaded without " + prefix + " db" ) << std::endl;
+                    << "Snapshot downloaded without " + prefix + " db";
                 return;
             }
 
@@ -315,8 +311,7 @@ void downloadSnapshot( unsigned block_number, std::shared_ptr< SnapshotManager >
 
     } catch ( ... ) {
         std::throw_with_nested(
-            std::runtime_error( cc::fatal( "FATAL:" ) + " " +
-                                cc::error( "Exception while processing downloaded snapshot: " ) ) );
+            std::runtime_error( "FATAL: Exception while processing downloaded snapshot: " ) );
     }
     if ( !saveTo.empty() )
         fs::remove( saveTo );
@@ -1597,6 +1592,7 @@ int main( int argc, char** argv ) try {
 
     std::string urlToDownloadSnapshotFrom = "";
     if ( vm.count( "no-snapshot-majority" ) ) {
+        downloadSnapshotFlag = true;
         urlToDownloadSnapshotFrom = vm["no-snapshot-majority"].as< string >();
         clog( VerbosityInfo, "main" )
             << "Manually set url to download snapshot from: " << urlToDownloadSnapshotFrom;
@@ -1606,25 +1602,8 @@ int main( int argc, char** argv ) try {
         std::vector< std::string > coreVolumes = { BlockChain::getChainDirName( chainParams ),
             "filestorage", "prices_" + chainParams.nodeInfo.id.str() + ".db",
             "blocks_" + chainParams.nodeInfo.id.str() + ".db" };
-        std::vector< std::string > archiveVolumes = {};
-        if ( chainParams.nodeInfo.archiveMode ) {
-#ifdef HISTORIC_STATE
-            archiveVolumes.insert( archiveVolumes.end(), { "historic_roots", "historic_state" } );
-#endif
-        }
         snapshotManager.reset( new SnapshotManager(
             chainParams, getDataDir(), sharedSpace ? sharedSpace->getPath() : "" ) );
-    }
-
-    bool downloadGenesisForSyncNode = false;
-    if ( chainParams.nodeInfo.syncNode ) {
-        auto bc = BlockChain( chainParams, getDataDir() );
-        if ( bc.number() == 0 ) {
-            downloadSnapshotFlag = true;
-            if ( chainParams.nodeInfo.syncFromCatchup ) {
-                downloadGenesisForSyncNode = true;
-            }
-        }
     }
 
     if ( downloadSnapshotFlag ) {
@@ -1637,18 +1616,8 @@ int main( int argc, char** argv ) try {
             sharedSpace_lock.reset( new std::lock_guard< SharedSpace >( *sharedSpace ) );
 
         try {
-            if ( !downloadGenesisForSyncNode )
-                downloadAndProccessSnapshot(
-                    snapshotManager, chainParams, urlToDownloadSnapshotFrom, true );
-            else {
-                try {
-                    downloadAndProccessSnapshot(
-                        snapshotManager, chainParams, urlToDownloadSnapshotFrom, false );
-                    snapshotManager->restoreSnapshot( 0 );
-                } catch ( SnapshotManager::SnapshotAbsent& ) {
-                    clog( VerbosityWarning, "main" ) << "Snapshot for 0 block is not found";
-                }
-            }
+            downloadAndProccessSnapshot(
+                snapshotManager, chainParams, urlToDownloadSnapshotFrom, true );
 
             // if we dont have 0 snapshot yet
             try {
@@ -1657,9 +1626,11 @@ int main( int argc, char** argv ) try {
                 // sleep before send skale_getSnapshot again - will receive error
                 clog( VerbosityInfo, "main" )
                     << std::string( "Will sleep for " )
-                    << chainParams.sChain.snapshotDownloadInactiveTimeout
+                    << chainParams.sChain.snapshotDownloadInactiveTimeout +
+                           dev::rpc::Skale::snapshotDownloadFragmentMonitorThreadTimeout()
                     << std::string( " seconds before downloading 0 snapshot" );
-                sleep( chainParams.sChain.snapshotDownloadInactiveTimeout );
+                sleep( chainParams.sChain.snapshotDownloadInactiveTimeout +
+                       dev::rpc::Skale::snapshotDownloadFragmentMonitorThreadTimeout() );
 
                 downloadAndProccessSnapshot(
                     snapshotManager, chainParams, urlToDownloadSnapshotFrom, false );
@@ -1671,6 +1642,26 @@ int main( int argc, char** argv ) try {
         }
 
     }  // if --download-snapshot
+
+    // download 0 snapshot if needed
+    if ( chainParams.nodeInfo.syncNode ) {
+        auto bc = BlockChain( chainParams, getDataDir() );
+        if ( bc.number() == 0 ) {
+            if ( chainParams.nodeInfo.syncFromCatchup && !downloadSnapshotFlag ) {
+                statusAndControl->setExitState( StatusAndControl::StartAgain, true );
+                statusAndControl->setExitState( StatusAndControl::StartFromSnapshot, true );
+                statusAndControl->setSubsystemRunning( StatusAndControl::SnapshotDownloader, true );
+
+                try {
+                    downloadAndProccessSnapshot(
+                        snapshotManager, chainParams, urlToDownloadSnapshotFrom, false );
+                    snapshotManager->restoreSnapshot( 0 );
+                } catch ( SnapshotManager::SnapshotAbsent& ) {
+                    clog( VerbosityWarning, "main" ) << "Snapshot for 0 block is not found";
+                }
+            }
+        }
+    }
 
     statusAndControl->setSubsystemRunning( StatusAndControl::SnapshotDownloader, false );
 
