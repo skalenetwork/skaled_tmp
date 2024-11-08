@@ -745,7 +745,7 @@ Same as `eth_getFilterChanges`
 #### Exceptions
 Throws `INVALID_PARAMS` if filter cannot be found or if response size is exceeded
 #### Notes
-Response size limit is determined by `getLogsBlocksLimit` config parameter, and currenly is 2000 logs per request.
+Response size is limited by number of consecutive blocks that can be requested. It is set in `getLogsBlocksLimit` config parameter, which currenly is 2000 blocks.
 
 ### `eth_getLogs`
 | Compatibility |   |
