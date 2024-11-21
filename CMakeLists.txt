@@ -185,7 +185,6 @@ if( TESTS )
     include( ProjectBinaryen )
 endif()
 
-
 if (HISTORIC_STATE)
 add_definitions(-DHISTORIC_STATE=1)
 endif (HISTORIC_STATE)
