@@ -57,7 +57,7 @@ foreach(file ${sources})
     endforeach(test_raw)
 endforeach(file)
 
-hunter_add_package(yaml-cpp)
+#hunter_add_package(yaml-cpp)
 find_package(yaml-cpp CONFIG REQUIRED)
 
 add_executable(testeth ${sources} unittests/libethereum/InstanceMonitorTest.cpp)
