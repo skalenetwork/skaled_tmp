@@ -77,9 +77,6 @@ list( APPEND CMAKE_MODULE_PATH ${ETH_CMAKE_DIR} )
 set( CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release )
 set( CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release )
 
-#set( HUNTER_CONFIGURATION_TYPES Release )
-#set( HUNTER_JOBS_NUMBER 4 )
-
 find_program( CCACHE_FOUND ccache )
 if( CCACHE_FOUND )
     set_property( GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache )
@@ -94,10 +91,6 @@ else()
     set( run_upload NO )
 endif()
 #option( HUNTER_RUN_UPLOAD "Upload binaries to the cache server" ${run_upload} )
-
-#include( HunterGate )
-##HunterGate( URL "https://github.com/ruslo/hunter/archive/v0.23.76.tar.gz" SHA1 "c7b60993e841850e2c449afd454f5d5aa4ec04e4" LOCAL )
-#HunterGate( URL "https://github.com/ruslo/hunter/archive/v0.23.214.tar.gz" SHA1 "e14bc153a7f16d6a5eeec845fb0283c8fad8c358" LOCAL ) #leveldb 1.22
 
 set( CMAKE_CXX_STANDARD 17 )
 
@@ -135,29 +128,17 @@ include( FindClangFormat )
 
 set( Boost_USE_STATIC_LIBS ON )
 set( Boost_USE_MULTITHREADED ON )
-set( BOOST_ROOT ${CMAKE_PREFIX_PATH} )
-set( BOOST_INCLUDEDIR "${CMAKE_PREFIX_PATH}/include" )
-set( BOOST_LIBRARYDIR "${CMAKE_PREFIX_PATH}/lib" )
 set( Boost_NO_BOOST_CMAKE ON )
-set( Boost_NO_SYSTEM_PATHS ON )
-#hunter_add_package( Boost COMPONENTS program_options filesystem system thread context fiber log chrono test)
-find_package( Boost CONFIG REQUIRED program_options filesystem system thread context fiber log chrono)
-
-#set( SKALE_HAVE_BOOST_FROM_HUNTER true )
+find_package( Boost MODULE REQUIRED program_options filesystem system thread context fiber log chrono)
 
 option( BUILD_LEVELDB "Build leveldb from leveldb directory" OFF )
 
 if( BUILD_LEVELDB )
     add_subdirectory( leveldb )
 else()
-#    hunter_add_package( leveldb )
     find_package( leveldb CONFIG REQUIRED )
 endif()
 
-#hunter_add_package( jsoncpp )
-#find_package( jsoncpp PATHS "${DEPS_INSTALL_ROOT}/libs/cmake" ) #( jsoncpp CONFIG REQUIRED )
-
-#hunter_add_package( Snappy )
 find_package( Snappy CONFIG REQUIRED )
 
 set( LIB_NAME_cryptopp "cryptopp" )
@@ -166,8 +147,7 @@ set( LIB_NAME_cryptopp "cryptopp" )
 #find_package( MHD PATHS "${DEPS_INSTALL_ROOT}/libs/cmake" )
 #find_library( MHD microhttpd )
 
-#hunter_add_package( libscrypt )
-find_package( libscrypt CONFIG REQUIRED )
+find_library( CRYPT_LIBRARIES NAMES crypt HINTS "${DEPS_INSTALL_ROOT}/lib")
 
 #hunter_add_package( ethash )
 find_package( ethash CONFIG REQUIRED )

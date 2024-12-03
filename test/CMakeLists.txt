@@ -57,8 +57,7 @@ foreach(file ${sources})
     endforeach(test_raw)
 endforeach(file)
 
-#hunter_add_package(yaml-cpp)
-find_package(yaml-cpp CONFIG REQUIRED)
+find_library( YAML_CPP_LIBRARIES NAMES yaml-cpp HINTS "${DEPS_INSTALL_ROOT}/lib")
 
 add_executable(testeth ${sources} unittests/libethereum/InstanceMonitorTest.cpp)
 target_compile_options( testeth PRIVATE
@@ -72,7 +71,7 @@ if( APPLE )
 endif()
 target_include_directories(testeth PRIVATE ${UTILS_INCLUDE_DIR} ../libconsensus/spdlog/include)
 target_link_libraries(testeth PRIVATE
-    ethereum historic ethashseal web3jsonrpc devcrypto devcore skale-buildinfo ${LIB_NAME_cryptopp} yaml-cpp::yaml-cpp binaryen::binaryen
+    ethereum historic ethashseal web3jsonrpc devcrypto devcore skale-buildinfo ${LIB_NAME_cryptopp} yaml-cpp binaryen::binaryen
     skutils
     Boost::system Boost::program_options
     jsonrpccpp-client # ${CMAKE_SOURCE_DIR}/libconsensus/libjson-rpc-cpp/build/lib/libjsonrpccpp-client.a

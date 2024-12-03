@@ -14,6 +14,6 @@ target_link_libraries( devcrypto
         ${DEPS_INSTALL_ROOT}/lib/libff.a
         ${DEPS_INSTALL_ROOT}/lib/libgmp.a
         ${LIB_NAME_cryptopp}
-        libscrypt::scrypt
+        ${CRYPT_LIBRARIES}
     )
 
