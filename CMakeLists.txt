@@ -135,6 +135,11 @@ include( FindClangFormat )
 
 set( Boost_USE_STATIC_LIBS ON )
 set( Boost_USE_MULTITHREADED ON )
+set( BOOST_ROOT ${CMAKE_PREFIX_PATH} )
+set( BOOST_INCLUDEDIR "${CMAKE_PREFIX_PATH}/include" )
+set( BOOST_LIBRARYDIR "${CMAKE_PREFIX_PATH}/lib" )
+set( Boost_NO_BOOST_CMAKE ON )
+set( Boost_NO_SYSTEM_PATHS ON )
 #hunter_add_package( Boost COMPONENTS program_options filesystem system thread context fiber log chrono test)
 find_package( Boost CONFIG REQUIRED program_options filesystem system thread context fiber log chrono)
 
@@ -184,7 +189,6 @@ if( TESTS )
     # TODO: remove this once testeth uses binaryen as a CLI tool.
     include( ProjectBinaryen )
 endif()
-
 
 if (HISTORIC_STATE)
 add_definitions(-DHISTORIC_STATE=1)
