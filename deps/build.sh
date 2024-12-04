@@ -2380,7 +2380,7 @@ then
                                 echo -e "${COLOR_INFO}getting it from git${COLOR_DOTS}...${COLOR_RESET}"
                                 eval git clone https://github.com/google/snappy.git --recursive
                 cd snappy
-                eval git checkout 32ded457c0b1fe78ceb8397632c416568d6714a0
+                eval git checkout v1.1.7
                 cd ..
                                 echo -e "${COLOR_INFO}archiving it${COLOR_DOTS}...${COLOR_RESET}"
                                 eval tar -czf snappy-from-git.tar.gz ./snappy
@@ -2459,9 +2459,9 @@ then
                         then
                                 echo -e "${COLOR_INFO}getting it from git${COLOR_DOTS}...${COLOR_RESET}"
                                 eval git clone https://github.com/chfast/ethash.git --recursive
-                cd ethash
-                eval git checkout v0.5.0
-                cd ..
+                                cd ethash
+                                eval git checkout v0.5.0
+                                cd ..
                                 echo -e "${COLOR_INFO}archiving it${COLOR_DOTS}...${COLOR_RESET}"
                                 eval tar -czf ethash-from-git.tar.gz ./snappy
                         else
@@ -2491,7 +2491,7 @@ fi
 if [ "$WITH_YAML" = "yes" ];
 then
         echo -e "${COLOR_SEPARATOR}==================== ${COLOR_PROJECT_NAME}libYamlCpp${COLOR_SEPARATOR} ==================================${COLOR_RESET}"
-        if [ ! -f "$INSTALL_ROOT/lib/libyaml.a" ];
+        if [ ! -f "$INSTALL_ROOT/lib/libyaml-cpp.a" ];
         then
                 env_restore
                 cd "$SOURCES_ROOT"
