@@ -2328,9 +2328,9 @@ then
 			then
 				echo -e "${COLOR_INFO}getting it from git${COLOR_DOTS}...${COLOR_RESET}"
 				eval git clone https://github.com/facebook/proxygen.git --recursive
-                cd proxygen
-                eval git checkout f666fe2d938a1b06a3281c958cdeb46743a2fa49
-                cd ..
+                                cd proxygen
+                                eval git checkout f666fe2d938a1b06a3281c958cdeb46743a2fa49
+                                cd ..
 				echo -e "${COLOR_INFO}archiving it${COLOR_DOTS}...${COLOR_RESET}"
 				eval tar -czf proxygen-from-git.tar.gz ./proxygen
 			else
@@ -2379,9 +2379,9 @@ then
                         then
                                 echo -e "${COLOR_INFO}getting it from git${COLOR_DOTS}...${COLOR_RESET}"
                                 eval git clone https://github.com/google/snappy.git --recursive
-                cd snappy
-                eval git checkout v1.1.7
-                cd ..
+                                cd snappy
+                                eval git checkout 1.1.7
+                                cd ..
                                 echo -e "${COLOR_INFO}archiving it${COLOR_DOTS}...${COLOR_RESET}"
                                 eval tar -czf snappy-from-git.tar.gz ./snappy
                         else
@@ -2421,9 +2421,9 @@ then
                         then
                                 echo -e "${COLOR_INFO}getting it from git${COLOR_DOTS}...${COLOR_RESET}"
                                 eval git clone https://github.com/technion/libscrypt.git --recursive
-                cd libscrypt
-                eval git checkout v1.22
-                cd ..
+                                cd libscrypt
+                                eval git checkout v1.22
+                                cd ..
                                 echo -e "${COLOR_INFO}archiving it${COLOR_DOTS}...${COLOR_RESET}"
                                 eval tar -czf libscrypt-from-git.tar.gz ./libscrypt
                         else
@@ -2463,7 +2463,7 @@ then
                                 eval git checkout v0.5.0
                                 cd ..
                                 echo -e "${COLOR_INFO}archiving it${COLOR_DOTS}...${COLOR_RESET}"
-                                eval tar -czf ethash-from-git.tar.gz ./snappy
+                                eval tar -czf ethash-from-git.tar.gz ./ethash
                         else
                                 echo -e "${COLOR_INFO}unpacking it${COLOR_DOTS}...${COLOR_RESET}"
                                 eval tar -xzf ethash-from-git.tar.gz
@@ -2472,7 +2472,7 @@ then
                         cd ethash
                         eval mkdir -p build
                         cd build
-                        eval "$CMAKE" "${CMAKE_CROSSCOMPILING_OPTS}" -DCMAKE_INSTALL_PREFIX="$INSTALL_ROOT" -DCMAKE_BUILD_TYPE="$TOP_CMAKE_BUILD_TYPE" \
+                        eval "$CMAKE" "${CMAKE_CROSSCOMPILING_OPTS}" -DCMAKE_INSTALL_PREFIX="$INSTALL_ROOT" \
                                 -DETHASH_BUILD_TESTS=OFF ..
                         cd ..
                 else

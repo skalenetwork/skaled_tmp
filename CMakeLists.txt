@@ -147,7 +147,7 @@ set( LIB_NAME_cryptopp "cryptopp" )
 #find_package( MHD PATHS "${DEPS_INSTALL_ROOT}/libs/cmake" )
 #find_library( MHD microhttpd )
 
-find_library( CRYPT_LIBRARIES NAMES crypt HINTS "${DEPS_INSTALL_ROOT}/lib")
+find_library( SCRYPT_LIBRARIES NAMES scrypt HINTS "${DEPS_INSTALL_ROOT}/lib")
 
 #hunter_add_package( ethash )
 find_package( ethash CONFIG REQUIRED )
