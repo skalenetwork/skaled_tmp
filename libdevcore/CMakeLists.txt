@@ -17,7 +17,7 @@ add_dependencies(devcore secp256k1)
 target_compile_options( devcore PRIVATE
     -Wno-error=deprecated-copy -Wno-error=unused-result -Wno-error=unused-parameter
     -Wno-error=unused-variable -Wno-error=maybe-uninitialized -Wno-error=class-memaccess
-    -Wno-error=nonnull
+    -Wno-nonnull
 )
 
 # Needed to prevent including system-level boost headers:

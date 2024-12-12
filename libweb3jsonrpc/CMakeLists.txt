@@ -143,7 +143,7 @@ target_compile_options( web3jsonrpc PRIVATE
     -Wno-error=deprecated-copy -Wno-error=unused-result -Wno-error=unused-parameter -Wno-error=unused-variable -Wno-error=maybe-uninitialized
     -Wno-error=pessimizing-move
     -Wno-error=stringop-truncation
-    -Wno-error=nonnull
+    -Wno-nonnull
     )
 
 target_link_libraries( web3jsonrpc
