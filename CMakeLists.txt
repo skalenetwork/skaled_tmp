@@ -234,8 +234,11 @@ if ( CONSENSUS )
     set( SKALED_LATEST_STANDARD ON CACHE BOOL "Use latest standards" ) # depricated option. TODO: remove from consensus
     set( BUILD_TESTS OFF CACHE BOOL "Build tests" ) # do not build libbls tests
     add_subdirectory( libconsensus EXCLUDE_FROM_ALL)
+    target_compile_options( consensus PRIVATE -Wno-unused-variable ) # silence libff warnings
+    target_compile_options( bls PRIVATE -Wno-unused-variable ) # silence libff warnings
 else()
     add_subdirectory( libconsensus/libBLS )
+    target_compile_options( bls PRIVATE -Wno-unused-variable ) # silence libff warnings
     set( BUILD_TESTS OFF CACHE BOOL "Build tests" ) # do not build libbls tests
 endif()
 
