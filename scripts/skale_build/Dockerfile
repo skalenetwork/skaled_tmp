@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get -q update && \
@@ -18,7 +18,7 @@ RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-net && \
 
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
     apt-get update && \
-    apt-get install -y gcc-9 g++-9 gdb
+    apt-get install -y gcc-11 g++-11 gdb
 
 RUN mkdir /skaled
 COPY ./executable /skaled
