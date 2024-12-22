@@ -5,6 +5,7 @@ RUN apt-get -q update && \
     apt-get -qy install \
         software-properties-common \
         curl \
+        wget \
         libgmp-dev \
         libleveldb-dev \
         nettle-bin \
