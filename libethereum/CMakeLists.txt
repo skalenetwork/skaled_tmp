@@ -5,6 +5,7 @@ add_library( ethereum ${sources} InstanceMonitor.cpp InstanceMonitor.h
 
 target_compile_options( ethereum PRIVATE
     -Wno-error=deprecated-copy -Wno-error=unused-result -Wno-error=unused-parameter -Wno-error=unused-variable -Wno-error=maybe-uninitialized
+    -Wno-nonnull -Wno-stringop-overflow -Wno-array-bounds -Wno-restrict
     )
 
 target_include_directories( ethereum PRIVATE "${UTILS_INCLUDE_DIR}" ${SKUTILS_INCLUDE_DIRS}

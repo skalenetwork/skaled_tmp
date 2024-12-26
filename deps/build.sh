@@ -332,9 +332,6 @@ export TOOLCHAINS_DOWNLOADED_PATH=$TOOLCHAINS_PATH/downloads
 export ARM_TOOLCHAIN_NAME=gcc7.2-arm
 export ARM_GCC_VER=7.2.0
 
-#export ARM_TOOLCHAIN_NAME=gcc4.8-arm
-#export ARM_GCC_VER=4.8.4
-
 export ARM_TOOLCHAIN_PATH=$TOOLCHAINS_PATH/$ARM_TOOLCHAIN_NAME
 
 export ADDITIONAL_INCLUDES="-I$INSTALL_ROOT/include"
@@ -378,12 +375,12 @@ then
 	else
 		if [ "$UNIX_SYSTEM_NAME" = "Linux" ];
 		then
-			export CC=$(which gcc-9)
+                        export CC=$(which gcc-11)
 			if [ -z "${CC}" ];
 			then
 				export CC=$(which gcc)
 			fi
-			export CXX=$(which g++-9)
+                        export CXX=$(which g++-11)
 			if [ -z "${CXX}" ];
 			then
 				export CXX=$(which g++)
@@ -2101,18 +2098,20 @@ then
 			eval mkdir -p build2
                         cd build2
 			eval "$CMAKE" "${CMAKE_CROSSCOMPILING_OPTS}" -DCMAKE_INSTALL_PREFIX="$INSTALL_ROOT" -DCMAKE_BUILD_TYPE="$TOP_CMAKE_BUILD_TYPE" \
-                                -DBOOST_ROOT="$INSTALL_ROOT" -DBOOST_LIBRARYDIR="$INSTALL_ROOT/lib" -DBoost_NO_WARN_NEW_VERSIONS=1 -DBoost_DEBUG=ON \
+                                -DBOOST_ROOT="$INSTALL_ROOT" -DBOOST_INCLUDEDIR="${INSTALL_ROOT}/include" -DBOOST_LIBRARYDIR="$INSTALL_ROOT/lib" \
+                                -DBoost_NO_BOOST_CMAKE=ON -DBoost_NO_WARN_NEW_VERSIONS=1 -DBoost_DEBUG=ON \
 				-DBUILD_SHARED_LIBS=OFF \
 				-DBUILD_TESTS=OFF -DBUILD_BROKEN_TESTS=OFF -DBUILD_HANGING_TESTS=OFF -DBUILD_SLOW_TESTS=OFF \
-                -DCMAKE_INCLUDE_PATH="${INSTALL_ROOT}/include" \
-                -DCMAKE_LIBRARY_PATH="${INSTALL_ROOT}/lib" \
+                                -DCMAKE_INCLUDE_PATH="${INSTALL_ROOT}/include" \
+                                -DCMAKE_LIBRARY_PATH="${INSTALL_ROOT}/lib" \
+                                -DCMAKE_PREFIX_PATH=${INSTALL_ROOT} \
 				..
 			cd ..
 		else
 			cd folly
 		fi
 		echo -e "${COLOR_INFO}building it${COLOR_DOTS}...${COLOR_RESET}"
-		cd build2
+                cd build2
 		eval "$MAKE" "${PARALLEL_MAKE_OPTIONS}"
 		eval "$MAKE" "${PARALLEL_MAKE_OPTIONS}" install
 		if [ "$DEBUG" = "0" ]; then
@@ -2235,7 +2234,11 @@ then
 			eval mkdir -p build2
 			cd build2
 			eval "$CMAKE" "${CMAKE_CROSSCOMPILING_OPTS}" -DCMAKE_INSTALL_PREFIX="$INSTALL_ROOT" -DCMAKE_BUILD_TYPE="$TOP_CMAKE_BUILD_TYPE" \
-				-DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF \
+                                -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF \
+                                -DBOOST_ROOT="$INSTALL_ROOT" -DBOOST_INCLUDEDIR="${INSTALL_ROOT}/include" -DBOOST_LIBRARYDIR="$INSTALL_ROOT/lib" \
+                                -DBoost_NO_BOOST_CMAKE=ON -DCMAKE_INCLUDE_PATH="${INSTALL_ROOT}/include" \
+                                -DCMAKE_LIBRARY_PATH="${INSTALL_ROOT}/lib" \
+                                -DCMAKE_PREFIX_PATH=${INSTALL_ROOT} \
 				..
 			cd ..
 		else
@@ -2280,7 +2283,12 @@ then
 			eval mkdir -p build2
 			cd build2
 			eval "$CMAKE" "${CMAKE_CROSSCOMPILING_OPTS}" -DCMAKE_INSTALL_PREFIX="$INSTALL_ROOT" -DCMAKE_BUILD_TYPE="$TOP_CMAKE_BUILD_TYPE" \
-				-DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF ..
+                                -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF \
+                                -DBOOST_ROOT="$INSTALL_ROOT" -DBOOST_INCLUDEDIR="${INSTALL_ROOT}/include" -DBOOST_LIBRARYDIR="$INSTALL_ROOT/lib" \
+                                -DBoost_NO_BOOST_CMAKE=ON -DCMAKE_INCLUDE_PATH="${INSTALL_ROOT}/include" \
+                                -DCMAKE_LIBRARY_PATH="${INSTALL_ROOT}/lib" \
+                                -DCMAKE_PREFIX_PATH=${INSTALL_ROOT} \
+                                ..
 			cd ..
 		else
 			cd wangle/wangle
@@ -2326,7 +2334,12 @@ then
 			eval mkdir -p build2
 			cd build2
 			eval "$CMAKE" "${CMAKE_CROSSCOMPILING_OPTS}" -DCMAKE_INSTALL_PREFIX="$INSTALL_ROOT" -DCMAKE_BUILD_TYPE="$TOP_CMAKE_BUILD_TYPE" \
-                -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_SAMPLES=OFF -DBUILD_SHARED_LIBS=OFF ..
+                                -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_SAMPLES=OFF -DBUILD_SHARED_LIBS=OFF \
+                                -DBOOST_ROOT="$INSTALL_ROOT" -DBOOST_INCLUDEDIR="${INSTALL_ROOT}/include" -DBOOST_LIBRARYDIR="$INSTALL_ROOT/lib" \
+                                -DBoost_NO_BOOST_CMAKE=ON -DCMAKE_INCLUDE_PATH="${INSTALL_ROOT}/include" \
+                                -DCMAKE_LIBRARY_PATH="${INSTALL_ROOT}/lib" \
+                                -DCMAKE_PREFIX_PATH=${INSTALL_ROOT} \
+                                ..
 			cd ..
 		else
 			cd proxygen

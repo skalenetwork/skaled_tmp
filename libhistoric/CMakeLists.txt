@@ -4,6 +4,7 @@ add_library( historic ${sources})
 
 target_compile_options( historic PRIVATE
     -Wno-error=deprecated-copy -Wno-error=unused-result -Wno-error=unused-parameter -Wno-error=unused-variable -Wno-error=maybe-uninitialized
+    -Wno-stringop-overflow -Wno-array-bounds -Wno-restrict
     )
 
 target_include_directories( historic PRIVATE "${UTILS_INCLUDE_DIR}" ${SKUTILS_INCLUDE_DIRS}
