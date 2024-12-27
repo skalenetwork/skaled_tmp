@@ -8,6 +8,7 @@ RUN apt-get -q update && \
         wget \
         nettle-bin \
         gnutls-bin \
+        libleveldb-dev \
         libgoogle-perftools-dev \
         python3 \
         python3-pip \
