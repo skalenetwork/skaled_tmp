@@ -2505,7 +2505,7 @@ then
                 eval git checkout yaml-cpp-0.6.2
                 cd ..
                                 echo -e "${COLOR_INFO}archiving it${COLOR_DOTS}...${COLOR_RESET}"
-                                eval tar -czf yaml-cpp-from-git.tar.gz ./snappy
+                                eval tar -czf yaml-cpp-from-git.tar.gz ./yaml-cpp
                         else
                                 echo -e "${COLOR_INFO}unpacking it${COLOR_DOTS}...${COLOR_RESET}"
                                 eval tar -xzf yaml-cpp-from-git.tar.gz
