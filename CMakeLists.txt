@@ -149,7 +149,6 @@ set( LIB_NAME_cryptopp "cryptopp" )
 
 find_library( SCRYPT_LIBRARIES NAMES scrypt HINTS "${DEPS_INSTALL_ROOT}/lib")
 
-#hunter_add_package( ethash )
 find_package( ethash CONFIG REQUIRED )
 
 include( ProjectSecp256k1 )
