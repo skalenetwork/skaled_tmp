@@ -140,6 +140,7 @@ else()
 endif()
 
 find_package( Snappy CONFIG REQUIRED )
+find_package( Crc32c CONFIG REQUIRED )
 
 set( LIB_NAME_cryptopp "cryptopp" )
 
