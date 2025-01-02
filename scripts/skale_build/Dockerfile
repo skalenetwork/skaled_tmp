@@ -6,16 +6,16 @@ RUN apt-get -q update && \
         software-properties-common \
         curl \
         wget \
-        libgmp-dev \
-        libleveldb-dev \
         nettle-bin \
         gnutls-bin \
+        libleveldb-dev \
+        libgoogle-perftools-dev \
         python3 \
         python3-pip \
         btrfs-progs
 
 RUN wget http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb && \
-dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb    
+    dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb    
 
 RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-net && \
     echo 'Acquire::http::Timeout "20";' >> /etc/apt/apt.conf.d/80-net
@@ -28,5 +28,6 @@ RUN mkdir /skaled
 COPY ./executable /skaled
 WORKDIR /skaled
 RUN chmod +x skaled
+RUN ldd skaled
 
 ENTRYPOINT ["/skaled/skaled"]
