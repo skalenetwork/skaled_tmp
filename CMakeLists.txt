@@ -90,7 +90,6 @@ if( "$ENV{CI}" AND NOT "$ENV{GITHUB_USER_PASSWORD}" STREQUAL "" )
 else()
     set( run_upload NO )
 endif()
-#option( HUNTER_RUN_UPLOAD "Upload binaries to the cache server" ${run_upload} )
 
 set( CMAKE_CXX_STANDARD 17 )
 
