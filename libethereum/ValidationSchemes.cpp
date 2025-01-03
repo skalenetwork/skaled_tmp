@@ -227,7 +227,8 @@ void validateConfigJson( js::mObject const& _obj ) {
             { "catchupTimeoutSec", { { js::int_type }, JsonFieldPresence::Optional } },
             { "syncNodeCatchupTimeoutSec", { { js::int_type }, JsonFieldPresence::Optional } },
             { "readJsonHeaderTimeoutSec", { { js::int_type }, JsonFieldPresence::Optional } },
-            { "syncNodeReadJsonHeaderTimeoutSec", { { js::int_type }, JsonFieldPresence::Optional } } } );
+            { "syncNodeReadJsonHeaderTimeoutSec",
+                { { js::int_type }, JsonFieldPresence::Optional } } } );
 
     std::string keyShareName = "";
     try {
