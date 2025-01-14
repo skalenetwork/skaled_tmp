@@ -112,7 +112,7 @@ jobs:
               repo: context.repo.repo,
               sha: '${{ matrix.pr.sha }}',
               state,
-              context: 'Build and Test',
-              description: state === 'success' ? 'Build and tests passed' : 'Build or tests failed',
+              context: 'Nightly tests',
+              description: state === 'success' ? 'Nightly tests passed' : 'Nightly tests failed',
               target_url: `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`
             });
