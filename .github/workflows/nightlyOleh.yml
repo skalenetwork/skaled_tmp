@@ -1,9 +1,6 @@
 name: skaled nightly tests Oleh
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
-  
   workflow_dispatch:
 
 defaults:
@@ -50,6 +47,7 @@ jobs:
             }
 
             console.log("Filtered PRs:", filteredPRs);
+            console.log("Filtered PRs stringified:", JSON.stringify(filteredPRs));
             core.setOutput('pr-data', JSON.stringify(filteredPRs));
 
   BuildAndTestAll:
