@@ -93,20 +93,6 @@ jobs:
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
           sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-11 11
 
-      - name: Build dependencies
-        run: |
-          cd deps
-          ./build.sh DEBUG=1 PARALLEL_COUNT=$(nproc)
-          cd ..
-
-      - name: Configure and Build
-        run: |
-          mkdir -p build
-          cd build
-          cmake -DCMAKE_BUILD_TYPE=Debug ..
-          make -j$(nproc)
-          cd ..
-
       - name: Test
         id: test
         run: |
