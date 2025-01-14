@@ -107,7 +107,7 @@ jobs:
         with:
           script: |
             const state = '${{ steps.test.outcome }}' === 'success' ? 'success' : 'failure';
-            await github.repos.createCommitStatus({
+            await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: '${{ matrix.pr.sha }}',
