@@ -47,14 +47,12 @@ jobs:
             }
 
             console.log("Filtered PRs:", filteredPRs);
-            console.log("Filtered PRs stringified:", JSON.stringify(filteredPRs));
-            console.log("Filtered PRs stringified and back:", fromJson(JSON.stringify(filteredPRs)));
             core.setOutput('pr-data', JSON.stringify(filteredPRs));
 
   BuildAndTestAll:
     strategy:
       matrix:
-        pr: ${{ fromJson(needs.identify-prs.outputs.pr-data) }}
+        pr: ${{fromJson(needs.identify-prs.outputs.pr-data)}}
     uses: ./.github/workflows/test-all.yml
     with:
         branch_name: ${{ matrix.pr.branch }}
