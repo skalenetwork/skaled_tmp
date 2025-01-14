@@ -57,10 +57,10 @@ jobs:
     strategy:
       matrix:
         pr: ${{ fromJson(needs.identify-prs.outputs.pr-data) }}
-    uses: ./.github/workflows/test-all.yml
-    with:
-        branch_name: ${{ matrix.pr.branch }}
-        sha: ${{ matrix.pr.sha }}
-    secrets:
-        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      uses: ./.github/workflows/test-all.yml
+      with:
+          branch_name: ${{ matrix.pr.branch }}
+          sha: ${{ matrix.pr.sha }}
+      secrets:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
