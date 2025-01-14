@@ -48,6 +48,7 @@ jobs:
 
             console.log("Filtered PRs:", filteredPRs);
             console.log("Filtered PRs stringified:", JSON.stringify(filteredPRs));
+            console.log("Filtered PRs stringified and back:", fromJson(JSON.stringify(filteredPRs)));
             core.setOutput('pr-data', JSON.stringify(filteredPRs));
 
   BuildAndTestAll:
