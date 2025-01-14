@@ -48,11 +48,13 @@ jobs:
 
             console.log("Filtered PRs:", filteredPRs);
             core.setOutput('pr-data', JSON.stringify(filteredPRs));
+      - run: |
+          echo "${{ steps.get-prs.outputs.pr-data }}"
 
   BuildAndTestAll:
     strategy:
       matrix:
-        pr: ${{needs.identify-prs.outputs.pr-data && fromJson(needs.identify-prs.outputs.pr-data)}}
+        pr: ${{fromJson(needs.identify-prs.outputs.pr-data)}}
     uses: ./.github/workflows/test-all.yml
     with:
         branch_name: ${{ matrix.pr.branch }}
