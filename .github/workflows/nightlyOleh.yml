@@ -60,7 +60,6 @@ jobs:
         echo "${{fromJson(needs.identify-prs.outputs.pr-data)}}"
 
   BuildAndTestAll:
-    needs: [identify-prs]
     strategy:
       matrix:
         pr: ${{fromJson(needs.identify-prs.outputs.pr-data)}}
