@@ -48,18 +48,6 @@ jobs:
 
             console.log("Filtered PRs:", filteredPRs);
             core.setOutput('pr-data', JSON.stringify(filteredPRs));
-      - run: |
-          echo "${{ steps.get-prs.outputs.pr-data }}"
-  
-  intermediate:
-    needs: [identify-prs]
-    runs-on: ubuntu-latest
-    env:
-        ACTIONS_ALLOW_UNSECURE_COMMANDS: true
-    steps:
-      - name: print output
-        run: |
-          echo "${{fromJson(needs.identify-prs.outputs.pr-data)}}"
 
   BuildAndTestAll:
     needs: [identify-prs]
