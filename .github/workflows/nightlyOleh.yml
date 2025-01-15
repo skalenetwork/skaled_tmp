@@ -53,12 +53,11 @@ jobs:
 
   BuildAndTestAll:
     strategy:
-      matrix:
-        pr: ${{fromJson(needs.identify-prs.outputs.pr-data)}}
+      matrix: ${{fromJson(needs.identify-prs.outputs.pr-data)}}
     uses: ./.github/workflows/test-all.yml
     with:
-        branch_name: ${{ matrix.pr.branch }}
-        sha: ${{ matrix.pr.sha }}
+        branch_name: ${{ matrix.branch }}
+        sha: ${{ matrix.sha }}
     secrets:
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
