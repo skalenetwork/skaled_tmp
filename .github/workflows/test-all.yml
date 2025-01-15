@@ -128,13 +128,13 @@ jobs:
       - name: Testeth all verbosity 4
         id: TestCore
         run : |
-          ls skaled/main.cpp
+          ls skaled/mainX.cpp
         continue-on-error: true
 
       - name: Testeth historic
         id: TestHistoric
         run : |
-          ls libhistoric/HistoricState.cpp
+          ls libhistoric/HistoricStateX.cpp
         continue-on-error: true
       - name: Update PR Status
         uses: actions/github-script@v6
