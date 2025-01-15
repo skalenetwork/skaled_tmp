@@ -55,7 +55,7 @@ jobs:
     needs: [identify-prs]
     runs-on: ubuntu-latest
     steps:
-      - name : print output
+      - name: print output
       run: |
         echo "${{fromJson(needs.identify-prs.outputs.pr-data)}}"
 
