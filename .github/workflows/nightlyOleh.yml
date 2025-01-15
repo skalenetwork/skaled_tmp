@@ -50,14 +50,24 @@ jobs:
             core.setOutput('pr-data', JSON.stringify(filteredPRs));
       - run: |
           echo "${{ steps.get-prs.outputs.pr-data }}"
+  
+  intermediate:
+    runs-on: ubuntu-latest
+    needs: [identify-prs]
+    steps:
+      -name : print output
+      run: |
+        echo "${{fromJson(needs.identify-prs.outputs.pr-data)}}"
 
   BuildAndTestAll:
+    needs: [identify-prs]
     strategy:
-      matrix: ${{fromJson(needs.identify-prs.outputs.pr-data)}}
+      matrix:
+        pr: ${{fromJson(needs.identify-prs.outputs.pr-data)}}
     uses: ./.github/workflows/test-all.yml
     with:
-        branch_name: ${{ matrix.branch }}
-        sha: ${{ matrix.sha }}
+        branch_name: ${{ matrix.pr.branch }}
+        sha: ${{ matrix.pr.sha }}
     secrets:
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
