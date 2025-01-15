@@ -54,10 +54,12 @@ jobs:
   intermediate:
     needs: [identify-prs]
     runs-on: ubuntu-latest
+    env:
+        ACTIONS_ALLOW_UNSECURE_COMMANDS: true
     steps:
       - name: print output
-      run: |
-        echo "${{fromJson(needs.identify-prs.outputs.pr-data)}}"
+        run: |
+          echo "${{fromJson(needs.identify-prs.outputs.pr-data)}}"
 
   BuildAndTestAll:
     needs: [identify-prs]
