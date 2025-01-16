@@ -36,8 +36,6 @@
 #include <libethereum/Defaults.h>
 #include <libethereum/StateImporter.h>
 
-#include "ContractStorageLimitPatch.h"
-
 #include "libweb3jsonrpc/Eth.h"
 #include "libweb3jsonrpc/JsonHelper.h"
 
@@ -45,8 +43,7 @@
 #include <skutils/eth_utils.h>
 
 #include <libethereum/BlockDetails.h>
-#include <libskale/RevertableFSPatch.h>
-#include <libskale/StorageDestructionPatch.h>
+#include <libethereum/SchainPatch.h>
 
 namespace fs = boost::filesystem;
 
@@ -66,6 +63,14 @@ using dev::eth::TransactionReceipt;
 #ifndef ETH_VMTRACE
 #define ETH_VMTRACE 0
 #endif
+
+const std::map< std::pair< uint64_t, std::string >, uint64_t > State::txnsToSkipExecution{
+    { { 1020352220, "3464b9a165a29fde2ce644882e82d99edbff5f530413f6cc18b26bf97e6478fb" }, 40729 },
+    { { 1482601649, "d3f25440b752f4ad048b618554f71cec08a73af7bf88b6a7d55581f3a792d823" }, 32151 },
+    { { 974399131, "fcd7ecb7c359af0a93a02e5d84957e0c6f90da4584c058e9c5e988b27a237693" }, 23700 },
+    { { 1482601649, "6f2074cfe73a258c049ac2222101b7020461c2d40dcd5ab9587d5bbdd13e4c68" }, 55293 },
+    { { 21, "95fb5557db8cc6de0aff3a64c18a6d9378b0d312b24f5d77e8dbf5cc0612d74f" }, 23232 }
+};  // the last value is for the test
 
 State::State( dev::u256 const& _accountStartNonce, boost::filesystem::path const& _dbPath,
     dev::h256 const& _genesis, BaseState _bs, dev::u256 _initialFunds,
@@ -359,7 +364,7 @@ std::unordered_map< Address, u256 > State::addresses() const {
     boost::shared_lock< boost::shared_mutex > lock( *x_db_ptr );
     if ( !checkVersion() ) {
         cerror << "Current state version is " << m_currentVersion << " but stored version is "
-               << *m_storedVersion << endl;
+               << *m_storedVersion;
         BOOST_THROW_EXCEPTION( AttemptToReadFromStateInThePast() );
     }
 
@@ -441,7 +446,7 @@ eth::Account* State::account( Address const& _address ) {
 
         if ( !checkVersion() ) {
             cerror << "Current state version is " << m_currentVersion << " but stored version is "
-                   << *m_storedVersion << endl;
+                   << *m_storedVersion;
             BOOST_THROW_EXCEPTION( AttemptToReadFromStateInThePast() );
         }
 
@@ -510,7 +515,7 @@ void State::commit( dev::eth::CommitBehaviour _commitBehaviour ) {
                     m_db_ptr->kill( address );
                     m_db_ptr->killAuxiliary( address, Auxiliary::CODE );
 
-                    if ( StorageDestructionPatch::isEnabled() ) {
+                    if ( StorageDestructionPatch::isEnabledInWorkingBlock() ) {
                         clearStorage( address );
                     }
 
@@ -669,7 +674,7 @@ std::map< h256, std::pair< u256, u256 > > State::storage_WITHOUT_LOCK(
     const Address& _contract ) const {
     if ( !checkVersion() ) {
         cerror << "Current state version is " << m_currentVersion << " but stored version is "
-               << *m_storedVersion << endl;
+               << *m_storedVersion;
         BOOST_THROW_EXCEPTION( AttemptToReadFromStateInThePast() );
     }
 
@@ -689,7 +694,7 @@ std::map< h256, std::pair< u256, u256 > > State::storage_WITHOUT_LOCK(
         }
     }
 
-    cdebug << "Self-destruct cleared values:" << storage.size() << endl;
+    cdebug << "Self-destruct cleared values:" << storage.size();
 
     return storage;
 }
@@ -896,7 +901,7 @@ void State::rollback( size_t _savepoint ) {
         // change log entry.
         switch ( change.kind ) {
         case Change::Storage:
-            if ( ContractStorageLimitPatch::isEnabled() ) {
+            if ( ContractStoragePatch::isEnabledInWorkingBlock() ) {
                 rollbackStorageChange( change, account );
             } else {
                 account.setStorage( change.key, change.value );
@@ -925,7 +930,7 @@ void State::rollback( size_t _savepoint ) {
         m_changeLog.pop_back();
     }
     clearFileStorageCache();
-    if ( !ContractStorageLimitPatch::isEnabled() ) {
+    if ( !ContractStoragePatch::isEnabledInWorkingBlock() ) {
         resetStorageChanges();
     }
 }
@@ -1007,17 +1012,26 @@ bool State::empty() const {
     return false;
 }
 
+bool State::ifShouldSkipExecution( uint64_t _chainId, const dev::h256& _hash ) {
+    return txnsToSkipExecution.count( { _chainId, _hash.hex() } ) > 0;
+}
+
+uint64_t State::getGasUsedForSkippedTransaction( uint64_t _chainId, const dev::h256& _hash ) {
+    return txnsToSkipExecution.at( { _chainId, _hash.hex() } );
+}
+
 std::pair< ExecutionResult, TransactionReceipt > State::execute( EnvInfo const& _envInfo,
-    SealEngineFace const& _sealEngine, Transaction const& _t, Permanence _p,
+    eth::ChainOperationParams const& _chainParams, Transaction const& _t, Permanence _p,
     OnOpFunc const& _onOp ) {
     // Create and initialize the executive. This will throw fairly cheaply and quickly if the
     // transaction is bad in any way.
     // HACK 0 here is for gasPrice
-    Executive e( *this, _envInfo, _sealEngine, 0, 0, _p != Permanence::Committed );
+    // TODO Not sure that 1st 0 as timestamp is acceptable here
+    Executive e( *this, _envInfo, _chainParams, 0, 0, _p != Permanence::Committed );
     ExecutionResult res;
     e.setResultRecipient( res );
 
-    bool isCacheEnabled = RevertableFSPatch::isEnabled();
+    bool isCacheEnabled = RevertableFSPatch::isEnabledWhen( _envInfo.committedBlockTimestamp() );
     resetOverlayFS( isCacheEnabled );
 
     auto onOp = _onOp;
@@ -1026,15 +1040,22 @@ std::pair< ExecutionResult, TransactionReceipt > State::execute( EnvInfo const& 
         onOp = e.simpleTrace();
 #endif
     u256 const startGasUsed = _envInfo.gasUsed();
-    bool const statusCode = executeTransaction( e, _t, onOp );
+    bool statusCodeTmp = false;
+    if ( _p == Permanence::Committed && ifShouldSkipExecution( _chainParams.chainID, _t.sha3() ) ) {
+        e.initialize( _t );
+        e.execute();
+        statusCodeTmp = false;
+    } else {
+        statusCodeTmp = executeTransaction( e, _t, onOp );
+    }
+    bool const statusCode = statusCodeTmp;
 
     std::string strRevertReason;
     if ( res.excepted == dev::eth::TransactionException::RevertInstruction ) {
         strRevertReason = skutils::eth::call_error_message_2_str( res.output );
         if ( strRevertReason.empty() )
             strRevertReason = "EVM revert instruction without description message";
-        std::string strOut = cc::fatal( "Error message from eth_call():" ) + cc::error( " " ) +
-                             cc::warn( strRevertReason );
+        std::string strOut = "Error message from State::execute(): " + strRevertReason;
         cerror << strOut;
     }
 
@@ -1059,14 +1080,22 @@ std::pair< ExecutionResult, TransactionReceipt > State::execute( EnvInfo const& 
         // shaLastTx.hex() << "\n";
 
         TransactionReceipt receipt =
-            _envInfo.number() >= _sealEngine.chainParams().byzantiumForkBlock ?
-                TransactionReceipt( statusCode, startGasUsed + e.gasUsed(), e.logs() ) :
-                TransactionReceipt( EmptyTrie, startGasUsed + e.gasUsed(), e.logs() );
+            TransactionReceipt( statusCode, startGasUsed + e.gasUsed(), e.logs() );
+        if ( _p == Permanence::Committed &&
+             ifShouldSkipExecution( _chainParams.chainID, _t.sha3() ) ) {
+            receipt = TransactionReceipt( statusCode,
+                startGasUsed + getGasUsedForSkippedTransaction( _chainParams.chainID, _t.sha3() ),
+                e.logs() );
+        } else {
+            receipt = _envInfo.number() >= _chainParams.byzantiumForkBlock ?
+                          TransactionReceipt( statusCode, startGasUsed + e.gasUsed(), e.logs() ) :
+                          TransactionReceipt( EmptyTrie, startGasUsed + e.gasUsed(), e.logs() );
+        }
         receipt.setRevertReason( strRevertReason );
         m_db_ptr->addReceiptToPartials( receipt );
         m_fs_ptr->commit();
 
-        removeEmptyAccounts = _envInfo.number() >= _sealEngine.chainParams().EIP158ForkBlock;
+        removeEmptyAccounts = _envInfo.number() >= _chainParams.EIP158ForkBlock;
         commit( removeEmptyAccounts ? dev::eth::CommitBehaviour::RemoveEmptyAccounts :
                                       dev::eth::CommitBehaviour::KeepEmptyAccounts );
 
@@ -1078,9 +1107,16 @@ std::pair< ExecutionResult, TransactionReceipt > State::execute( EnvInfo const& 
     }
 
     TransactionReceipt receipt =
-        _envInfo.number() >= _sealEngine.chainParams().byzantiumForkBlock ?
-            TransactionReceipt( statusCode, startGasUsed + e.gasUsed(), e.logs() ) :
-            TransactionReceipt( EmptyTrie, startGasUsed + e.gasUsed(), e.logs() );
+        TransactionReceipt( statusCode, startGasUsed + e.gasUsed(), e.logs() );
+    if ( _p == Permanence::Committed && ifShouldSkipExecution( _chainParams.chainID, _t.sha3() ) ) {
+        receipt = TransactionReceipt( statusCode,
+            startGasUsed + getGasUsedForSkippedTransaction( _chainParams.chainID, _t.sha3() ),
+            e.logs() );
+    } else {
+        receipt = _envInfo.number() >= _chainParams.byzantiumForkBlock ?
+                      TransactionReceipt( statusCode, startGasUsed + e.gasUsed(), e.logs() ) :
+                      TransactionReceipt( EmptyTrie, startGasUsed + e.gasUsed(), e.logs() );
+    }
     receipt.setRevertReason( strRevertReason );
 
     return make_pair( res, receipt );

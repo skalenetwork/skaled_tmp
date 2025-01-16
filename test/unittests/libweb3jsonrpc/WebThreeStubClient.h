@@ -5,6 +5,8 @@
 #ifndef JSONRPC_CPP_STUB_WEBTHREESTUBCLIENT_H_
 #define JSONRPC_CPP_STUB_WEBTHREESTUBCLIENT_H_
 
+#include <any>
+
 #include <jsonrpccpp/client.h>
 
 class WebThreeStubClient : public jsonrpc::Client {
@@ -57,7 +59,7 @@ public:
     std::string eth_call( const Json::Value& param1, const std::string& param2 ) noexcept( false );
     std::string eth_callEIP1898( const Json::Value& param1, const Json::Value& param2 ) noexcept( false );
     bool eth_flush() noexcept( false );
-    std::string eth_estimateGas( const Json::Value& param1 ) noexcept( false );
+    std::string eth_estimateGas( const Json::Value& param1, const std::string& param2 = "latest" ) noexcept( false );
     Json::Value eth_getBlockByHash( const std::string& param1, bool param2 ) noexcept( false );
     Json::Value eth_getBlockByNumber( const std::string& param1, bool param2 ) noexcept( false );
     Json::Value eth_getTransactionByHash( const std::string& param1 ) noexcept( false );
@@ -94,7 +96,11 @@ public:
     Json::Value eth_unsubscribe( const Json::Value& param1 ) noexcept( false );
     Json::Value setSchainExitTime( const Json::Value& param1 ) noexcept( false );
     Json::Value eth_inspectTransaction( const std::string& param1 ) noexcept( false );
+    Json::Value eth_pendingTransactions() noexcept( false );
     std::string eth_sendRawTransaction( const std::string& param1 ) noexcept( false );
+    std::string eth_maxPriorityFeePerGas() noexcept( false );
+    Json::Value eth_createAccessList( const Json::Value& param1, const std::string& param2 ) noexcept( false );
+    Json::Value eth_feeHistory( const Json::Value& param1, const std::string& param2, const Json::Value& param3 ) noexcept( false );
     bool eth_notePassword( const std::string& param1 ) noexcept( false );
     bool db_put( const std::string& param1, const std::string& param2,
         const std::string& param3 ) noexcept( false );
@@ -153,13 +159,14 @@ public:
     Json::Value debug_storageRangeAt( const std::string& param1, int param2,
         const std::string& param3, const std::string& param4, int param5 ) noexcept( false );
     std::string debug_preimage( const std::string& param1 ) noexcept( false );
-    Json::Value debug_traceBlockByNumber( int param1, const Json::Value& param2 ) noexcept( false );
+    Json::Value debug_traceBlockByNumber( const std::string &  param1, const Json::Value& param2 ) noexcept( false );
     Json::Value debug_traceBlockByHash(
         const std::string& param1, const Json::Value& param2 ) noexcept( false );
     Json::Value debug_traceCall( const Json::Value& param1, const std::string& param2,
         const Json::Value& param3 ) noexcept( false );
     Json::Value debug_doStateDbCompaction() noexcept( false );
     Json::Value debug_doBlocksDbCompaction() noexcept( false );
+    Json::Value debug_getFutureTransactions() noexcept( false );
 };
 
 #endif  // JSONRPC_CPP_STUB_WEBTHREESTUBCLIENT_H_

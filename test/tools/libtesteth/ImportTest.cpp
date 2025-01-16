@@ -103,7 +103,7 @@ void ImportTest::makeBlockchainTestFromStateTest( set< eth::Network > const& _ne
 
             // Calculate the block reward
             ChainParams const chainParams{genesisInfo( net )};
-            EVMSchedule const schedule = chainParams.scheduleForBlockNumber( 1 );
+            EVMSchedule const schedule = chainParams.makeEvmSchedule( 0, 1 );
             // u256 const blockReward = chainParams.blockReward(schedule);
 
             TrExpectSection search{trDup, smap};
@@ -111,36 +111,9 @@ void ImportTest::makeBlockchainTestFromStateTest( set< eth::Network > const& _ne
                 TrExpectSection* search2 = &search;
                 checkGeneralTestSectionSearch( exp.get_obj(), stateIndexesToPrint, "", search2 );
                 throw std::logic_error( "Skale state does not support addresses list" );
-                //                if (search.second.first.addresses().size() != 0)  // if match in
-                //                the expect sections
-                //                                                                  // for this tr
-                //                                                                  found
-                //                {
-                //                    // replace expected mining reward (in state tests it is 0)
-                //                    json_spirit::mObject obj =
-                //                        fillJsonWithState(search2->second.first,
-                //                        search2->second.second);
-                //                    for (auto& adr : obj)
-                //                    {
-                //                        if (adr.first == toHexPrefixed(m_envInfo->author()) &&
-                //                            adr.second.get_obj().count("balance"))
-                //                        {
-                //                            u256 expectCoinbaseBalance =
-                //                            toInt(adr.second.get_obj()["balance"]);
-                //                            expectCoinbaseBalance += blockReward;
-                //                            adr.second.get_obj()["balance"] =
-                //                                toCompactHexPrefixed(expectCoinbaseBalance);
-                //                        }
-                //                    }
 
-                //                    json_spirit::mObject expetSectionObj;
-                //                    expetSectionObj["network"] = test::netIdToString(net);
-                //                    expetSectionObj["result"] = obj;
-                //                    expetSectionArray.push_back(expetSectionObj);
-                //                    break;
-                //                }
             }  // for exp
-        }      // for net
+        } // for net
 
         testObj["expect"] = expetSectionArray;
 
@@ -225,7 +198,6 @@ bytes ImportTest::executeTest( bool _isFilling ) {
             continue;
 
         for ( auto& tr : m_transactions ) {
-            tr.transaction.checkOutExternalGas( 100 );
             Options const& opt = Options::get();
             if ( opt.trDataIndex != -1 && opt.trDataIndex != tr.dataInd )
                 continue;
@@ -290,11 +262,11 @@ std::tuple< State, ImportTest::ExecOutput, skale::ChangeLog > ImportTest::execut
             StandardTrace st;
             st.setShowMnemonics();
             st.setOptions( Options::get().jsontraceOptions );
-            out = initialState.execute( _env, *se.get(), _tr, Permanence::Committed, st.onOp() );
+            out = initialState.execute( _env, se->chainParams(), _tr, Permanence::Committed, st.onOp() );
             cout << st.json();
             cout << "{\"stateRoot\": \"Is not supported\"}";
         } else
-            out = initialState.execute( _env, *se.get(), _tr, Permanence::Uncommitted );
+            out = initialState.execute( _env, se->chainParams(), _tr, Permanence::Uncommitted );
 
         // the changeLog might be broken under --jsontrace, because it uses intialState.execute with
         // Permanence::Committed rather than Permanence::Uncommitted
@@ -385,7 +357,8 @@ void ImportTest::importEnv( json_spirit::mObject const& _o ) {
     header.setAuthor( Address( _o.at( "currentCoinbase" ).get_str() ) );
 
     m_lastBlockHashes.reset( new TestLastBlockHashes( lastHashes( header.number() ) ) );
-    m_envInfo.reset( new EnvInfo( header, *m_lastBlockHashes, 0, mainnetChainID() ) );
+    // enable all patches ("1")
+    m_envInfo.reset( new EnvInfo( header, *m_lastBlockHashes, 1, 0, mainnetChainID() ) );
 }
 
 // import state from not fully declared json_spirit::mObject, writing to _stateOptionsMap which
@@ -445,6 +418,7 @@ void ImportTest::importTransaction( json_spirit::mObject const& _o, eth::Transac
                        toInt( _o.at( "gasLimit" ) ), Address( _o.at( "to" ).get_str() ),
                        importData( _o ), toInt( _o.at( "nonce" ) ),
                        Secret( _o.at( "secretKey" ).get_str() ) );
+        o_tr.ignoreExternalGas();
     } else {
         requireJsonFields( _o, "transaction",
             {{"data", jsonVType::str_type}, {"gasLimit", jsonVType::str_type},
@@ -456,6 +430,7 @@ void ImportTest::importTransaction( json_spirit::mObject const& _o, eth::Transac
         RLP transactionRLP( transactionRLPStream.out() );
         try {
             o_tr = Transaction( transactionRLP.data(), CheckTransaction::Everything );
+            o_tr.ignoreExternalGas();
         } catch ( InvalidSignature const& ) {
             // create unsigned transaction
             o_tr = _o.at( "to" ).get_str().empty() ?
@@ -465,6 +440,7 @@ void ImportTest::importTransaction( json_spirit::mObject const& _o, eth::Transac
                        Transaction( toInt( _o.at( "value" ) ), toInt( _o.at( "gasPrice" ) ),
                            toInt( _o.at( "gasLimit" ) ), Address( _o.at( "to" ).get_str() ),
                            importData( _o ), toInt( _o.at( "nonce" ) ) );
+            o_tr.ignoreExternalGas();
         } catch ( Exception& _e ) {
             cnote << "invalid transaction" << boost::diagnostic_information( _e );
         }
@@ -739,15 +715,6 @@ bool ImportTest::checkGeneralTestSectionSearch( json_spirit::mObject const& _exp
                         _errorTransactions.push_back( i );
                     }
                 } else if ( _expects.count( "hash" ) ) {
-                    // checking filled state test against client
-                    //                    BOOST_CHECK_MESSAGE(_expects.at("hash").get_str() ==
-                    //                                            toHexPrefixed(tr.postState.globalRoot().asBytes()),
-                    //                        TestOutputHelper::get().testName() + " on " +
-                    //                            test::netIdToString(tr.netId) +
-                    //                            ": Expected another postState hash! expected: " +
-                    //                            _expects.at("hash").get_str() + " actual: " +
-                    //                            toHexPrefixed(tr.postState.globalRoot().asBytes()) +
-                    //                            " in " + trInfo);
                     if ( _expects.count( "logs" ) )
                         BOOST_CHECK_MESSAGE(
                             _expects.at( "logs" ).get_str() == exportLog( tr.output.second.log() ),

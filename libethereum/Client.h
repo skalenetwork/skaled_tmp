@@ -37,6 +37,7 @@
 #include <time.h>
 
 #include <boost/filesystem/path.hpp>
+#include <libconsensus/thirdparty/lru_ordered_memory_constrained_cache.hpp>
 
 #include <libdevcore/Common.h>
 #include <libdevcore/CommonIO.h>
@@ -55,6 +56,7 @@
 #include "StateImporter.h"
 #include "ThreadSafeQueue.h"
 
+#include <libhistoric/AlethStandardTrace.h>
 #include <skutils/atomic_shared_ptr.h>
 #include <skutils/multithreading.h>
 
@@ -74,6 +76,12 @@ struct ActivityReport {
 };
 
 std::ostream& operator<<( std::ostream& _out, ActivityReport const& _r );
+
+
+#ifdef HISTORIC_STATE
+constexpr size_t MAX_BLOCK_TRACES_CACHE_SIZE = 64 * 1024 * 1024;
+constexpr size_t MAX_BLOCK_TRACES_CACHE_ITEMS = 1024 * 1024;
+#endif
 
 /**
  * @brief Main API hub for interfacing with Ethereum.
@@ -121,11 +129,27 @@ public:
 #endif
         FudgeFactor _ff = FudgeFactor::Strict ) override;
 
+#ifdef HISTORIC_STATE
+    Json::Value traceCall( Address const& _from, u256 _value, Address _to, bytes const& _data,
+        u256 _gas, u256 _gasPrice, BlockNumber _blockNumber, Json::Value const& _jsonTraceConfig );
+    Json::Value traceBlock( BlockNumber _blockNumber, Json::Value const& _jsonTraceConfig );
+    Transaction createTransactionForCallOrTraceCall( const Address& _from, const u256& _value,
+        const Address& _to, const bytes& _data, const u256& _gasLimit, const u256& _gasPrice,
+        const u256& nonce ) const;
+#endif
+
+
     /// Blocks until all pending transactions have been processed.
     void flushTransactions() override;
 
+    using ClientBase::blockDetails;
+    using ClientBase::blockInfo;  // for another overload
+    using ClientBase::uncleHashes;
+
     /// Retrieve pending transactions
     Transactions pending() const override;
+
+    Transactions debugGetFutureTransactions() const { return m_tq.debugGetFutureTransactions(); }
 
     /// Queues a block for import.
     ImportResult queueBlock( bytes const& _block, bool _isSafe = false );
@@ -133,7 +157,9 @@ public:
     /// Get the remaining gas limit in this block.
     u256 gasLimitRemaining() const override { return m_postSeal.gasLimitRemaining(); }
     /// Get the gas bid price
-    u256 gasBidPrice() const override { return m_gp->bid(); }
+    u256 gasBidPrice( unsigned _blockNumber = dev::eth::LatestBlock ) const override {
+        return m_gp->bid( _blockNumber );
+    }
 
     // [PRIVATE API - only relevant for base clients, not available in general]
     /// Get the block.
@@ -244,8 +270,6 @@ public:
     /// Queues a function to be executed in the main thread (that owns the blockchain, etc).
     void executeInMainThread( std::function< void() > const& _function );
 
-    Block latestBlock() const;
-
     /// should be called after the constructor of the most derived class finishes.
     void startWorking() {
         assert( m_skaleHost );
@@ -297,7 +321,25 @@ public:
     }
 
     std::array< std::string, 4 > getIMABLSPublicKey() const {
-        return chainParams().sChain.nodeGroups[imaBLSPublicKeyGroupIndex].blsPublicKey;
+        return chainParams().sChain.nodeGroups.at( historicGroupIndex ).blsPublicKey;
+    }
+
+    // get node id for historic node in chain
+    std::string getHistoricNodeId( unsigned _id ) const {
+        return chainParams().sChain.nodeGroups.at( historicGroupIndex ).nodes.at( _id ).id.str();
+    }
+
+    // get schain index for historic node in chain
+    std::string getHistoricNodeIndex( unsigned _idx ) const {
+        return chainParams()
+            .sChain.nodeGroups.at( historicGroupIndex )
+            .nodes.at( _idx )
+            .schainIndex.str();
+    }
+
+    // get node owner for historic node in chain
+    std::string getHistoricNodePublicKey( unsigned _idx ) const {
+        return chainParams().sChain.nodeGroups.at( historicGroupIndex ).nodes.at( _idx ).publicKey;
     }
 
     void doStateDbCompaction() const { m_state.getOriginalDb()->doCompaction(); }
@@ -530,12 +572,16 @@ protected:
     const static dev::h256 empty_str_hash;
     std::shared_ptr< InstanceMonitor > m_instanceMonitor;
     fs::path m_dbPath;
+#ifdef HISTORIC_STATE
+    cache::lru_ordered_memory_constrained_cache< std::string, Json::Value > m_blockTraceCache;
+#endif
 
 private:
-    void initIMABLSPublicKey();
-    void updateIMABLSPublicKey();
+    void initHistoricGroupIndex();
+    void updateHistoricGroupIndex();
 
-    unsigned imaBLSPublicKeyGroupIndex = 0;
+    // which group corresponds to the current block timestamp on this node
+    unsigned historicGroupIndex = 0;
 
 public:
     FILE* performance_fd;

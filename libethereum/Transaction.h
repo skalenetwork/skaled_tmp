@@ -29,6 +29,8 @@
 #include <libethcore/Common.h>
 #include <libethcore/TransactionBase.h>
 
+#include "ChainParams.h"
+
 namespace dev {
 namespace eth {
 
@@ -105,12 +107,12 @@ public:
         u256 const& _nonce = Invalid256 );
 
     /// Constructs a transaction from the given RLP.
-    explicit Transaction(
-        bytesConstRef _rlp, CheckTransaction _checkSig, bool _allowInvalid = false );
+    explicit Transaction( bytesConstRef _rlp, CheckTransaction _checkSig,
+        bool _allowInvalid = false, bool _eip1559Enabled = false );
 
     /// Constructs a transaction from the given RLP.
-    explicit Transaction(
-        bytes const& _rlp, CheckTransaction _checkSig, bool _allowInvalid = false );
+    explicit Transaction( bytes const& _rlp, CheckTransaction _checkSig, bool _allowInvalid = false,
+        bool _eip1559Enabled = false );
 
     Transaction( Transaction const& ) = default;
 
@@ -120,7 +122,13 @@ public:
 
     u256 gasPrice() const;
 
-    void checkOutExternalGas( u256 const& _difficulty );
+    void checkOutExternalGas(
+        const ChainParams& _cp, time_t _committedBlockTimestamp, uint64_t _committedBlockNumber );
+
+    void ignoreExternalGas() {
+        m_externalGasIsChecked = true;
+        m_externalGas.reset();
+    }
 
 private:
     bool m_externalGasIsChecked = false;

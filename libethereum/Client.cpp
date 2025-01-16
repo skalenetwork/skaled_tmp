@@ -47,20 +47,16 @@
 #include <libdevcore/system_usage.h>
 
 #ifdef HISTORIC_STATE
+#include <libhistoric/AlethStandardTrace.h>
 #include <libhistoric/HistoricState.h>
+#include <libhistoric/TraceOptions.h>
 #endif
 
-
-#include <libskale/ContractStorageLimitPatch.h>
-#include <libskale/ContractStorageZeroValuePatch.h>
-#include <libskale/POWCheckPatch.h>
-#include <libskale/RevertableFSPatch.h>
-#include <libskale/SkipInvalidTransactionsPatch.h>
-#include <libskale/State.h>
-#include <libskale/StorageDestructionPatch.h>
+#include <libethereum/SchainPatch.h>
 #include <libskale/TotalStorageUsedPatch.h>
+
+#include <libskale/State.h>
 #include <libskale/UnsafeRegion.h>
-#include <libskale/VerifyDaSigsPatch.h>
 #include <skutils/console_colors.h>
 #include <json.hpp>
 
@@ -138,7 +134,12 @@ Client::Client( ChainParams const& _params, int _networkID,
       m_snapshotAgent( make_shared< SnapshotAgent >(
           _params.sChain.snapshotIntervalSec, _snapshotManager, m_debugTracer ) ),
       m_instanceMonitor( _instanceMonitor ),
-      m_dbPath( _dbPath ) {
+      m_dbPath( _dbPath )
+#ifdef HISTORIC_STATE
+      ,
+      m_blockTraceCache( MAX_BLOCK_TRACES_CACHE_ITEMS, MAX_BLOCK_TRACES_CACHE_SIZE )
+#endif
+{
 #if ( defined __HAVE_SKALED_LOCK_FILE_INDICATING_CRITICAL_STOP__ )
     create_lock_file_or_fail( m_dbPath );
 #endif  /// (defined __HAVE_SKALED_LOCK_FILE_INDICATING_CRITICAL_STOP__)
@@ -153,18 +154,6 @@ Client::Client( ChainParams const& _params, int _networkID,
     };
 
     init( _forceAction, _networkID );
-
-    // Set timestamps for patches
-    TotalStorageUsedPatch::g_client = this;
-    ContractStorageLimitPatch::setTimestamp( chainParams().sChain.contractStoragePatchTimestamp );
-    ContractStorageZeroValuePatch::setTimestamp(
-        chainParams().sChain.contractStorageZeroValuePatchTimestamp );
-    VerifyDaSigsPatch::setTimestamp( chainParams().sChain.verifyDaSigsPatchTimestamp );
-    RevertableFSPatch::setTimestamp( chainParams().sChain.revertableFSPatchTimestamp );
-    StorageDestructionPatch::setTimestamp( chainParams().sChain.storageDestructionPatchTimestamp );
-    POWCheckPatch::setTimestamp( chainParams().sChain.powCheckPatchTimestamp );
-    SkipInvalidTransactionsPatch::setTimestamp(
-        this->chainParams().sChain.skipInvalidTransactionsPatchTimestamp );
 }
 
 
@@ -311,8 +300,12 @@ void Client::init( WithExisting _forceAction, u256 _networkId ) {
     if ( m_dbPath.size() )
         Defaults::setDBPath( m_dbPath );
 
-    if ( ChainParams().sChain.nodeGroups.size() > 0 )
-        initIMABLSPublicKey();
+    if ( chainParams().sChain.nodeGroups.size() > 0 ) {
+        initHistoricGroupIndex();
+    } else {
+        LOG( m_logger ) << "Empty node groups in config. "
+                           "This is OK in tests but not OK in production";
+    }
 
     // init snapshots for not newly created chains
     if ( number() ) {
@@ -320,6 +313,9 @@ void Client::init( WithExisting _forceAction, u256 _networkId ) {
         m_snapshotAgentInited = true;
     }
 
+    SchainPatch::init( chainParams() );
+    SchainPatch::useLatestBlockTimestamp( blockChain().info().timestamp() );
+    TotalStorageUsedPatch::init( this );
     // HACK Needed to set env var for consensus
     AmsterdamFixPatch::isEnabled( *this );
 
@@ -592,6 +588,8 @@ size_t Client::importTransactionsAsBlock(
     sealUnconditionally( false );
     importWorkingBlock();
 
+    SchainPatch::useLatestBlockTimestamp( blockChain().info().timestamp() );
+
     if ( !UnsafeRegion::isActive() ) {
         LOG( m_loggerDetail ) << "Total unsafe time so far = "
                               << std::chrono::duration_cast< std::chrono::seconds >(
@@ -619,7 +617,7 @@ size_t Client::importTransactionsAsBlock(
     }
 
     if ( chainParams().sChain.nodeGroups.size() > 0 )
-        updateIMABLSPublicKey();
+        updateHistoricGroupIndex();
 
     m_snapshotAgent->doSnapshotIfNeeded( number(), _timestamp );
 
@@ -641,7 +639,7 @@ size_t Client::syncTransactions(
     // HACK remove block verification and put it directly in blockchain!!
     // TODO remove block verification and put it directly in blockchain!!
     while ( m_working.isSealed() ) {
-        cnote << "m_working.isSealed. sleeping" << endl;
+        cnote << "m_working.isSealed. sleeping";
         usleep( 1000 );
     }
 
@@ -651,13 +649,6 @@ size_t Client::syncTransactions(
 
     TransactionReceipts newPendingReceipts;
     unsigned goodReceipts;
-
-    ContractStorageLimitPatch::lastBlockTimestamp = blockChain().info().timestamp();
-    ContractStorageZeroValuePatch::lastBlockTimestamp = blockChain().info().timestamp();
-    RevertableFSPatch::lastBlockTimestamp = blockChain().info().timestamp();
-    StorageDestructionPatch::lastBlockTimestamp = blockChain().info().timestamp();
-    POWCheckPatch::lastBlockTimestamp = blockChain().info().timestamp();
-    SkipInvalidTransactionsPatch::lastBlockTimestamp = blockChain().info().timestamp();
 
     DEV_WRITE_GUARDED( x_working ) {
         assert( !m_working.isSealed() );
@@ -683,10 +674,13 @@ size_t Client::syncTransactions(
     // Tell network about the new transactions.
     m_skaleHost->noteNewTransactions();
 
-    ctrace << cc::debug( "Processed " ) << cc::size10( newPendingReceipts.size() )
-           << cc::debug( " transactions in " ) << cc::size10( timer.elapsed() * 1000 )
-           << cc::debug( "(" ) << ( bool ) m_syncTransactionQueue << cc::debug( ")" );
+    ctrace << "Processed " << newPendingReceipts.size() << " transactions in "
+           << timer.elapsed() * 1000 << "(" << ( bool ) m_syncTransactionQueue << ")";
 
+#ifdef HISTORIC_STATE
+    LOG( m_logger ) << "HSCT: "
+                    << m_working.mutableState().mutableHistoricState().getAndResetBlockCommitTime();
+#endif
     return goodReceipts;
 }
 
@@ -805,12 +799,12 @@ void Client::onPostStateChanged() {
 void Client::startSealing() {
     if ( m_wouldSeal == true )
         return;
-    LOG( m_logger ) << cc::notice( "Client::startSealing: " ) << author();
+    LOG( m_logger ) << "Client::startSealing: " << author();
     if ( author() ) {
         m_wouldSeal = true;
         m_signalled.notify_all();
     } else
-        LOG( m_logger ) << cc::warn( "You need to set an author in order to seal!" );
+        LOG( m_logger ) << "You need to set an author in order to seal!";
 }
 
 void Client::rejigSealing() {
@@ -818,24 +812,24 @@ void Client::rejigSealing() {
         if ( sealEngine()->shouldSeal( this ) ) {
             m_wouldButShouldnot = false;
 
-            LOG( m_loggerDetail ) << cc::notice( "Rejigging seal engine..." );
+            LOG( m_loggerDetail ) << "Rejigging seal engine...";
             DEV_WRITE_GUARDED( x_working ) {
                 if ( m_working.isSealed() ) {
-                    LOG( m_logger ) << cc::notice( "Tried to seal sealed block..." );
+                    LOG( m_logger ) << "Tried to seal sealed block...";
                     return;
                 }
                 // TODO is that needed? we have "Generating seal on" below
-                LOG( m_loggerDetail ) << cc::notice( "Starting to seal block" ) << " "
-                                      << cc::warn( "#" ) << cc::num10( m_working.info().number() );
+                LOG( m_loggerDetail ) << "Starting to seal block"
+                                      << " #" << m_working.info().number();
 
-                // TODO Deduplicate code!
+                // TODO Deduplicate code
                 dev::h256 stateRootToSet;
                 if ( m_snapshotAgent->getLatestSnapshotBlockNumer() > 0 ) {
-                    dev::h256 state_root_hash = this->m_snapshotAgent->getSnapshotHash(
+                    dev::h256 stateRootHash = this->m_snapshotAgent->getSnapshotHash(
                         m_snapshotAgent->getLatestSnapshotBlockNumer() );
-                    stateRootToSet = state_root_hash;
+                    stateRootToSet = stateRootHash;
                 }
-                // propagate current!
+                // propagate current
                 else if ( this->number() > 0 ) {
                     stateRootToSet =
                         blockInfo( this->hashFromNumber( this->number() ) ).stateRoot();
@@ -853,15 +847,15 @@ void Client::rejigSealing() {
 
             if ( wouldSeal() ) {
                 sealEngine()->onSealGenerated( [=]( bytes const& _header ) {
-                    LOG( m_logger ) << cc::success( "Block sealed" ) << " " << cc::warn( "#" )
-                                    << cc::num10( BlockHeader( _header, HeaderData ).number() );
+                    LOG( m_logger ) << "Block sealed"
+                                    << " #" << BlockHeader( _header, HeaderData ).number();
                     if ( this->submitSealed( _header ) )
                         m_onBlockSealed( _header );
                     else
-                        LOG( m_logger ) << cc::error( "Submitting block failed..." );
+                        LOG( m_logger ) << "Submitting block failed...";
                 } );
-                ctrace << cc::notice( "Generating seal on " ) << m_sealingInfo.hash( WithoutSeal )
-                       << " " << cc::warn( "#" ) << cc::num10( m_sealingInfo.number() );
+                ctrace << "Generating seal on " << m_sealingInfo.hash( WithoutSeal ) << " #"
+                       << m_sealingInfo.number();
                 sealEngine()->generateSeal( m_sealingInfo );
             }
         } else
@@ -874,24 +868,24 @@ void Client::rejigSealing() {
 void Client::sealUnconditionally( bool submitToBlockChain ) {
     m_wouldButShouldnot = false;
 
-    LOG( m_loggerDetail ) << cc::notice( "Rejigging seal engine..." );
+    LOG( m_loggerDetail ) << "Rejigging seal engine...";
     DEV_WRITE_GUARDED( x_working ) {
         if ( m_working.isSealed() ) {
-            LOG( m_logger ) << cc::notice( "Tried to seal sealed block..." );
+            LOG( m_logger ) << "Tried to seal sealed block...";
             return;
         }
         // TODO is that needed? we have "Generating seal on" below
-        LOG( m_loggerDetail ) << cc::notice( "Starting to seal block" ) << " " << cc::warn( "#" )
-                              << cc::num10( m_working.info().number() );
-        // latest hash is really updated after NEXT snapshot already started hash computation!
-        // TODO Deduplicate code!
+        LOG( m_loggerDetail ) << "Starting to seal block"
+                              << " #" << m_working.info().number();
+        // latest hash is really updated after NEXT snapshot already started hash computation
+        // TODO Deduplicate code
         dev::h256 stateRootToSet;
         if ( m_snapshotAgent->getLatestSnapshotBlockNumer() > 0 ) {
-            dev::h256 state_root_hash = this->m_snapshotAgent->getSnapshotHash(
+            dev::h256 stateRootHash = this->m_snapshotAgent->getSnapshotHash(
                 m_snapshotAgent->getLatestSnapshotBlockNumer() );
-            stateRootToSet = state_root_hash;
+            stateRootToSet = stateRootHash;
         }
-        // propagate current!
+        // propagate current
         else if ( this->number() > 0 ) {
             stateRootToSet = blockInfo( this->hashFromNumber( this->number() ) ).stateRoot();
         } else {
@@ -1085,7 +1079,9 @@ Block Client::blockByNumber( BlockNumber _h ) const {
 
         auto readState = m_state.createStateReadOnlyCopy();
         readState.mutableHistoricState().setRootByBlockNumber( _h );
-        DEV_GUARDED( m_blockImportMutex ) { return Block( bc(), hash, readState ); }
+        // removed m_blockImportMutex here
+        // this function doesn't interact with latest block so the mutex isn't needed
+        return Block( bc(), hash, readState );
         assert( false );
         return Block( bc() );
     } catch ( Exception& ex ) {
@@ -1096,19 +1092,6 @@ Block Client::blockByNumber( BlockNumber _h ) const {
 }
 #endif
 
-Block Client::latestBlock() const {
-    // TODO Why it returns not-filled block??! (see Block ctor)
-    try {
-        DEV_GUARDED( m_blockImportMutex ) { return Block( bc(), bc().currentHash(), m_state ); }
-        assert( false );
-        return Block( bc() );
-    } catch ( Exception& ex ) {
-        ex << errinfo_block( bc().block( bc().currentHash() ) );
-        onBadBlock( ex );
-        return Block( bc() );
-    }
-}
-
 void Client::flushTransactions() {
     doWork();
 }
@@ -1118,10 +1101,9 @@ Transactions Client::pending() const {
 }
 
 SyncStatus Client::syncStatus() const {
-    // TODO implement this when syncing will be needed
-    SyncStatus s;
-    s.startBlockNumber = s.currentBlockNumber = s.highestBlockNumber = 0;
-    return s;
+    if ( !m_skaleHost )
+        BOOST_THROW_EXCEPTION( std::runtime_error( "SkaleHost was not initialized" ) );
+    return m_skaleHost->syncStatus();
 }
 
 TransactionSkeleton Client::populateTransactionWithDefaults( TransactionSkeleton const& _t ) const {
@@ -1179,8 +1161,6 @@ h256 Client::importTransaction( Transaction const& _t ) {
     // the latest block in the client's blockchain. This can throw but
     // we'll catch the exception at the RPC level.
 
-    const_cast< Transaction& >( _t ).checkOutExternalGas( chainParams().externalGasDifficulty );
-
     // throws in case of error
     State state;
     u256 gasBidPrice;
@@ -1188,11 +1168,16 @@ h256 Client::importTransaction( Transaction const& _t ) {
     DEV_GUARDED( m_blockImportMutex ) {
         state = this->state().createStateReadOnlyCopy();
         gasBidPrice = this->gasBidPrice();
+
+        // We need to check external gas under mutex to be sure about current block number
+        // correctness
+        const_cast< Transaction& >( _t ).checkOutExternalGas(
+            chainParams(), bc().info().timestamp(), number() );
     }
 
-    Executive::verifyTransaction( _t,
+    Executive::verifyTransaction( _t, bc().info().timestamp(),
         bc().number() ? this->blockInfo( bc().currentHash() ) : bc().genesis(), state,
-        *bc().sealEngine(), 0, gasBidPrice, chainParams().sChain.multiTransactionMode );
+        chainParams(), 0, gasBidPrice, chainParams().sChain.multiTransactionMode );
 
     ImportResult res;
     if ( chainParams().sChain.multiTransactionMode && state.getNonce( _t.sender() ) < _t.nonce() &&
@@ -1226,7 +1211,7 @@ h256 Client::importTransaction( Transaction const& _t ) {
 
 
 ExecutionResult Client::call( Address const& _from, u256 _value, Address _dest, bytes const& _data,
-    u256 _gas, u256 _gasPrice,
+    u256 _gasLimit, u256 _gasPrice,
 #ifdef HISTORIC_STATE
     BlockNumber _blockNumber,
 #endif
@@ -1239,18 +1224,21 @@ ExecutionResult Client::call( Address const& _from, u256 _value, Address _dest, 
             // historic state
             try {
                 u256 nonce = historicBlock.mutableState().mutableHistoricState().getNonce( _from );
-                u256 gas = _gas == Invalid256 ? gasLimitRemaining() : _gas;
+                // if the user did not specify transaction gas limit, we give transaction block gas
+                // limit of gas
+                u256 gasLimit = _gasLimit == Invalid256 ? historicBlock.gasLimit() : _gasLimit;
                 u256 gasPrice = _gasPrice == Invalid256 ? gasBidPrice() : _gasPrice;
-                Transaction t( _value, gasPrice, gas, _dest, _data, nonce );
+                Transaction t( _value, gasPrice, gasLimit, _dest, _data, nonce );
                 t.forceSender( _from );
                 t.forceChainId( chainParams().chainID );
-                t.checkOutExternalGas( ~u256( 0 ) );
-                if ( _ff == FudgeFactor::Lenient ) {
-                    historicBlock.mutableState().mutableHistoricState().addBalance(
-                        _from, ( u256 )( t.gas() * t.gasPrice() + t.value() ) );
-                }
-
-                ret = historicBlock.executeHistoricCall( bc().lastBlockHashes(), t );
+                t.ignoreExternalGas();
+                // if we are in a call, we add to the balance of the account
+                // value needed for the call to guaranteed pass
+                // geth does a similar thing, we need to check whether it is fully compatible with
+                // geth
+                historicBlock.mutableState().mutableHistoricState().addBalance(
+                    _from, ( u256 )( t.gas() * t.gasPrice() + t.value() ) );
+                ret = historicBlock.executeHistoricCall( bc().lastBlockHashes(), t, nullptr, 0 );
             } catch ( ... ) {
                 cwarn << boost::current_exception_diagnostic_information();
                 throw;
@@ -1259,17 +1247,19 @@ ExecutionResult Client::call( Address const& _from, u256 _value, Address _dest, 
         }
 #endif
 
-        Block temp = latestBlock();
+        Block temp = preSeal();
 
         // TODO there can be race conditions between prev and next line!
         State readStateForLock = temp.mutableState().createStateReadOnlyCopy();
         u256 nonce = max< u256 >( temp.transactionsFrom( _from ), m_tq.maxNonce( _from ) );
-        u256 gas = _gas == Invalid256 ? gasLimitRemaining() : _gas;
+        // if the user did not specify transaction gas limit, we give transaction block gas
+        // limit of gas
+        u256 gasLimit = _gasLimit == Invalid256 ? temp.gasLimit() : _gasLimit;
         u256 gasPrice = _gasPrice == Invalid256 ? gasBidPrice() : _gasPrice;
-        Transaction t( _value, gasPrice, gas, _dest, _data, nonce );
+        Transaction t( _value, gasPrice, gasLimit, _dest, _data, nonce );
         t.forceSender( _from );
         t.forceChainId( chainParams().chainID );
-        t.checkOutExternalGas( ~u256( 0 ) );
+        t.ignoreExternalGas();
         if ( _ff == FudgeFactor::Lenient )
             temp.mutableState().addBalance( _from, ( u256 )( t.gas() * t.gasPrice() + t.value() ) );
         ret = temp.execute( bc().lastBlockHashes(), t, skale::Permanence::Reverted );
@@ -1285,9 +1275,105 @@ ExecutionResult Client::call( Address const& _from, u256 _value, Address _dest, 
     return ret;
 }
 
-void Client::initIMABLSPublicKey() {
+
+#ifdef HISTORIC_STATE
+
+Json::Value Client::traceCall( Address const& _from, u256 _value, Address _to, bytes const& _data,
+    u256 _gasLimit, u256 _gasPrice, BlockNumber _blockNumber,
+    Json::Value const& _jsonTraceConfig ) {
+    try {
+        Block historicBlock = blockByNumber( _blockNumber );
+        auto nonce = historicBlock.mutableState().mutableHistoricState().getNonce( _from );
+        // if the user did not specify transaction gas limit, we give transaction block gas
+        // limit of gas
+        auto gasLimit = _gasLimit == Invalid256 ? historicBlock.gasLimit() : _gasLimit;
+
+        Transaction t = createTransactionForCallOrTraceCall(
+            _from, _value, _to, _data, gasLimit, _gasPrice, nonce );
+        // record original t.from balance for trace and then give
+        // lots of gas to it
+        auto originalFromBalance = historicBlock.mutableState().balance( _from );
+        historicBlock.mutableState().mutableHistoricState().addBalance(
+            _from, ( u256 )( t.gas() * t.gasPrice() + t.value() ) );
+        auto traceOptions = TraceOptions::make( _jsonTraceConfig );
+        auto tracer =
+            make_shared< AlethStandardTrace >( t, historicBlock.author(), traceOptions, true );
+        tracer->setOriginalFromBalance( originalFromBalance );
+        auto er = historicBlock.executeHistoricCall( bc().lastBlockHashes(), t, tracer, 0 );
+        return tracer->getJSONResult();
+    } catch ( ... ) {
+        cwarn << boost::current_exception_diagnostic_information();
+        throw;
+    }
+}
+
+
+Transaction Client::createTransactionForCallOrTraceCall( const Address& _from, const u256& _value,
+    const Address& _to, const bytes& _data, const u256& _gasLimit, const u256& _gasPrice,
+    const u256& _nonce ) const {
+    auto gasPrice = _gasPrice == Invalid256 ? gasBidPrice() : _gasPrice;
+    Transaction t( _value, gasPrice, _gasLimit, _to, _data, _nonce );
+    // if call or trace call request did not specify from address, zero address is used
+    auto from = _from ? _from : ZeroAddress;
+    t.forceSender( from );
+    t.forceChainId( chainParams().chainID );
+    // call and traceCall do not use PoW
+    t.ignoreExternalGas();
+    return t;
+}
+
+
+Json::Value Client::traceBlock( BlockNumber _blockNumber, Json::Value const& _jsonTraceConfig ) {
+    try {
+        Block previousBlock = blockByNumber( _blockNumber - 1 );
+        Block historicBlock = blockByNumber( _blockNumber );
+
+        Json::Value traces( Json::arrayValue );
+
+        auto hash = ClientBase::hashFromNumber( _blockNumber );
+        Transactions transactions = this->transactions( hash );
+
+        auto traceOptions = TraceOptions::make( _jsonTraceConfig );
+
+        // cache results for better peformance
+        string key = to_string( _blockNumber ) + traceOptions.toString();
+
+        auto cachedResult = m_blockTraceCache.getIfExists( key );
+        if ( cachedResult.has_value() ) {
+            return std::any_cast< Json::Value >( cachedResult );
+        }
+
+        for ( unsigned k = 0; k < transactions.size(); k++ ) {
+            Json::Value transactionLog( Json::objectValue );
+            Transaction tx = transactions.at( k );
+            auto hashString = toHexPrefixed( tx.sha3() );
+            transactionLog["txHash"] = hashString;
+            tx.checkOutExternalGas( chainParams(), bc().info().timestamp(), number() );
+            auto tracer =
+                std::make_shared< AlethStandardTrace >( tx, historicBlock.author(), traceOptions );
+            auto executionResult =
+                previousBlock.executeHistoricCall( bc().lastBlockHashes(), tx, tracer, k );
+            auto result = tracer->getJSONResult();
+            transactionLog["result"] = result;
+            traces.append( transactionLog );
+        }
+
+        auto tracesSize = traces.toStyledString().size();
+        m_blockTraceCache.put( key, traces, tracesSize );
+
+        return traces;
+    } catch ( std::exception& e ) {
+        BOOST_THROW_EXCEPTION( std::runtime_error(
+            "Could not trace block:" + to_string( _blockNumber ) + ":" + e.what() ) );
+    }
+}
+
+#endif
+
+
+void Client::initHistoricGroupIndex() {
     if ( number() == 0 ) {
-        imaBLSPublicKeyGroupIndex = 0;
+        historicGroupIndex = 0;
         return;
     }
 
@@ -1299,7 +1385,11 @@ void Client::initIMABLSPublicKey() {
         chainParams().sChain.nodeGroups.end(),
         [&currentBlockTimestamp](
             const dev::eth::NodeGroup& ng ) { return currentBlockTimestamp <= ng.finishTs; } );
-    assert( it != chainParams().sChain.nodeGroups.end() );
+
+    if ( it == chainParams().sChain.nodeGroups.end() ) {
+        BOOST_THROW_EXCEPTION(
+            std::runtime_error( "Assertion failed: it == chainParams().sChain.nodeGroups.end()" ) );
+    }
 
     if ( it != chainParams().sChain.nodeGroups.begin() ) {
         auto prevIt = std::prev( it );
@@ -1308,15 +1398,18 @@ void Client::initIMABLSPublicKey() {
             it = prevIt;
     }
 
-    imaBLSPublicKeyGroupIndex = std::distance( chainParams().sChain.nodeGroups.begin(), it );
+    historicGroupIndex = std::distance( chainParams().sChain.nodeGroups.begin(), it );
 }
 
-void Client::updateIMABLSPublicKey() {
+void Client::updateHistoricGroupIndex() {
     uint64_t blockTimestamp = blockInfo( hashFromNumber( number() ) ).timestamp();
-    uint64_t currentFinishTs = chainParams().sChain.nodeGroups[imaBLSPublicKeyGroupIndex].finishTs;
+    uint64_t currentFinishTs = chainParams().sChain.nodeGroups.at( historicGroupIndex ).finishTs;
     if ( blockTimestamp >= currentFinishTs )
-        ++imaBLSPublicKeyGroupIndex;
-    assert( imaBLSPublicKeyGroupIndex < chainParams().sChain.nodeGroups.size() );
+        ++historicGroupIndex;
+    if ( historicGroupIndex >= chainParams().sChain.nodeGroups.size() ) {
+        BOOST_THROW_EXCEPTION( std::runtime_error(
+            "Assertion failed: historicGroupIndex >= chainParams().sChain.nodeGroups.size())" ) );
+    }
 }
 
 // new block watch

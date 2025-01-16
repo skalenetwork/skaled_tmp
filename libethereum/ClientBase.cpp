@@ -23,6 +23,7 @@
  */
 
 #include "ClientBase.h"
+#include <libethereum/SchainPatch.h>
 
 #include <algorithm>
 #include <utility>
@@ -79,8 +80,8 @@ void ClientWatch::append_changes( const LocalisedLogEntry& entry ) {
 }
 
 std::pair< bool, ExecutionResult > ClientBase::estimateGasStep( int64_t _gas, Block& _latestBlock,
-    Address const& _from, Address const& _destination, u256 const& _value, u256 const& _gasPrice,
-    bytes const& _data ) {
+    Block& _pendingBlock, Address const& _from, Address const& _destination, u256 const& _value,
+    u256 const& _gasPrice, bytes const& _data ) {
     u256 nonce = _latestBlock.transactionsFrom( _from );
     Transaction t;
     if ( _destination )
@@ -89,13 +90,14 @@ std::pair< bool, ExecutionResult > ClientBase::estimateGasStep( int64_t _gas, Bl
         t = Transaction( _value, _gasPrice, _gas, _data, nonce );
     t.forceSender( _from );
     t.forceChainId( chainId() );
-    t.checkOutExternalGas( ~u256( 0 ) );
-    EnvInfo const env( _latestBlock.info(), bc().lastBlockHashes(), 0, _gas );
-    // Make a copy of state!! It will be deleted after step!
+    t.ignoreExternalGas();
+    EnvInfo const env( _pendingBlock.info(), bc().lastBlockHashes(),
+        _pendingBlock.previousInfo().timestamp(), 0, _gas, bc().chainParams().chainID );
+    // Make a copy of the state, it will be deleted after this step
     State tempState = _latestBlock.mutableState();
     tempState.addBalance( _from, ( u256 )( t.gas() * t.gasPrice() + t.value() ) );
     ExecutionResult executionResult =
-        tempState.execute( env, *bc().sealEngine(), t, Permanence::Reverted ).first;
+        tempState.execute( env, bc().chainParams(), t, Permanence::Reverted ).first;
     if ( executionResult.excepted == TransactionException::OutOfGas ||
          executionResult.excepted == TransactionException::OutOfGasBase ||
          executionResult.excepted == TransactionException::OutOfGasIntrinsic ||
@@ -115,10 +117,19 @@ std::pair< u256, ExecutionResult > ClientBase::estimateGas( Address const& _from
         int64_t upperBound = _maxGas;
         if ( upperBound == Invalid256 || upperBound > c_maxGasEstimate )
             upperBound = c_maxGasEstimate;
-        int64_t lowerBound = Transaction::baseGasRequired( !_dest, &_data, EVMSchedule() );
-        Block bk = latestBlock();
-        if ( upperBound > bk.info().gasLimit() ) {
-            upperBound = bk.info().gasLimit().convert_to< int64_t >();
+        int64_t lowerBound;
+        if ( CorrectForkInPowPatch::isEnabledInWorkingBlock() )
+            lowerBound = Transaction::baseGasRequired( !_dest, &_data,
+                bc().sealEngine()->chainParams().makeEvmSchedule(
+                    bc().info().timestamp(), bc().number() ) );
+        else
+            lowerBound = Transaction::baseGasRequired( !_dest, &_data, EVMSchedule() );
+
+        Block latest = latestBlock();
+        Block pending = preSeal();
+
+        if ( upperBound > pending.info().gasLimit() ) {
+            upperBound = pending.info().gasLimit().convert_to< int64_t >();
         }
         u256 gasPrice = _gasPrice == Invalid256 ? gasBidPrice() : _gasPrice;
 
@@ -129,19 +140,20 @@ std::pair< u256, ExecutionResult > ClientBase::estimateGas( Address const& _from
         // If not run binary search to find optimal gas limit.
 
         auto estimatedStep =
-            estimateGasStep( upperBound, bk, _from, _dest, _value, gasPrice, _data );
+            estimateGasStep( upperBound, latest, pending, _from, _dest, _value, gasPrice, _data );
         if ( estimatedStep.first ) {
             auto executionResult = estimatedStep.second;
             auto gasUsed = std::max( executionResult.gasUsed.convert_to< int64_t >(), lowerBound );
 
-            estimatedStep = estimateGasStep( gasUsed, bk, _from, _dest, _value, gasPrice, _data );
+            estimatedStep =
+                estimateGasStep( gasUsed, latest, pending, _from, _dest, _value, gasPrice, _data );
             if ( estimatedStep.first ) {
                 return make_pair( gasUsed, executionResult );
             }
             while ( lowerBound + 1 < upperBound ) {
                 int64_t middle = ( lowerBound + upperBound ) / 2;
-                estimatedStep =
-                    estimateGasStep( middle, bk, _from, _dest, _value, gasPrice, _data );
+                estimatedStep = estimateGasStep(
+                    middle, latest, pending, _from, _dest, _value, gasPrice, _data );
                 if ( estimatedStep.first ) {
                     upperBound = middle;
                 } else {
@@ -154,7 +166,8 @@ std::pair< u256, ExecutionResult > ClientBase::estimateGas( Address const& _from
         }
 
         return make_pair( upperBound,
-            estimateGasStep( upperBound, bk, _from, _dest, _value, gasPrice, _data ).second );
+            estimateGasStep( upperBound, latest, pending, _from, _dest, _value, gasPrice, _data )
+                .second );
     } catch ( ... ) {
         // TODO: Some sort of notification of failure.
         return make_pair( u256(), ExecutionResult() );
@@ -205,6 +218,9 @@ LocalisedLogEntries ClientBase::logs( LogFilter const& _f ) const {
     LocalisedLogEntries ret;
     unsigned begin = min( bc().number() + 1, ( unsigned ) _f.latest() );
     unsigned end = min( bc().number(), min( begin, ( unsigned ) _f.earliest() ) );
+
+    if ( begin >= end && begin - end > ( uint64_t ) bc().chainParams().getLogsBlocksLimit )
+        BOOST_THROW_EXCEPTION( TooBigResponse() );
 
     // Handle pending transactions differently as they're not on the block chain.
     if ( begin > bc().number() ) {
@@ -337,18 +353,6 @@ bool ClientBase::uninstallWatch( unsigned _i ) {
     return true;
 }
 
-LocalisedLogEntries ClientBase::peekWatch( unsigned _watchId ) const {
-    Guard l( x_filtersWatches );
-
-    //	LOG(m_loggerWatch) << "peekWatch" << _watchId;
-    auto& w = m_watches.at( _watchId );
-    //	LOG(m_loggerWatch) << "lastPoll updated to " <<
-    // chrono::duration_cast<chrono::seconds>(chrono::system_clock::now().time_since_epoch()).count();
-    if ( w.lastPoll != chrono::system_clock::time_point::max() )
-        w.lastPoll = chrono::system_clock::now();
-    return w.get_changes();
-}
-
 LocalisedLogEntries ClientBase::checkWatch( unsigned _watchId ) {
     Guard l( x_filtersWatches );
     LocalisedLogEntries ret;
@@ -376,7 +380,10 @@ BlockDetails ClientBase::blockDetails( h256 _hash ) const {
 
 Transaction ClientBase::transaction( h256 _transactionHash ) const {
     // allow invalid!
-    return Transaction( bc().transaction( _transactionHash ), CheckTransaction::Cheap, true );
+    auto tl = bc().transactionLocation( _transactionHash );
+    return Transaction( bc().transaction( _transactionHash ), CheckTransaction::Cheap, true,
+        EIP1559TransactionsPatch::isEnabledWhen(
+            blockInfo( numberFromHash( tl.first ) - 1 ).timestamp() ) );
 }
 
 LocalisedTransaction ClientBase::localisedTransaction( h256 const& _transactionHash ) const {
@@ -389,15 +396,18 @@ Transaction ClientBase::transaction( h256 _blockHash, unsigned _i ) const {
     RLP b( bl );
     if ( _i < b[1].itemCount() )
         // allow invalid
-        return Transaction( b[1][_i].data(), CheckTransaction::Cheap, true );
+        return Transaction( b[1][_i].data(), CheckTransaction::Cheap, true,
+            EIP1559TransactionsPatch::isEnabledWhen(
+                blockInfo( numberFromHash( _blockHash ) - 1 ).timestamp() ) );
     else
         return Transaction();
 }
 
 LocalisedTransaction ClientBase::localisedTransaction( h256 const& _blockHash, unsigned _i ) const {
     // allow invalid
-    Transaction t =
-        Transaction( bc().transaction( _blockHash, _i ), CheckTransaction::Cheap, true );
+    Transaction t = Transaction( bc().transaction( _blockHash, _i ), CheckTransaction::Cheap, true,
+        EIP1559TransactionsPatch::isEnabledWhen(
+            blockInfo( numberFromHash( _blockHash ) - 1 ).timestamp() ) );
     return LocalisedTransaction( t, _blockHash, _i, numberFromHash( _blockHash ) );
 }
 
@@ -410,7 +420,9 @@ LocalisedTransactionReceipt ClientBase::localisedTransactionReceipt(
     std::pair< h256, unsigned > tl = bc().transactionLocation( _transactionHash );
     // allow invalid
     Transaction t =
-        Transaction( bc().transaction( tl.first, tl.second ), CheckTransaction::Cheap, true );
+        Transaction( bc().transaction( tl.first, tl.second ), CheckTransaction::Cheap, true,
+            EIP1559TransactionsPatch::isEnabledWhen(
+                blockInfo( numberFromHash( tl.first ) - 1 ).timestamp() ) );
     TransactionReceipt tr = bc().transactionReceipt( tl.first, tl.second );
     u256 gasUsed = tr.cumulativeGasUsed();
     if ( tl.second > 0 )
@@ -429,7 +441,8 @@ LocalisedTransactionReceipt ClientBase::localisedTransactionReceipt(
     //
     return LocalisedTransactionReceipt( tr, t.sha3(), tl.first, numberFromHash( tl.first ),
         tl.second, t.isInvalid() ? dev::Address( 0 ) : t.from(),
-        t.isInvalid() ? dev::Address( 0 ) : t.to(), gasUsed, contractAddress );
+        t.isInvalid() ? dev::Address( 0 ) : t.to(), gasUsed, contractAddress, int( t.txType() ),
+        t.isInvalid() ? 0 : t.gasPrice() );
 }
 
 pair< h256, unsigned > ClientBase::transactionLocation( h256 const& _transactionHash ) const {
@@ -440,8 +453,12 @@ Transactions ClientBase::transactions( h256 _blockHash ) const {
     auto bl = bc().block( _blockHash );
     RLP b( bl );
     Transactions res;
-    for ( unsigned i = 0; i < b[1].itemCount(); i++ )
-        res.emplace_back( b[1][i].data(), CheckTransaction::Cheap, true );
+    for ( unsigned i = 0; i < b[1].itemCount(); i++ ) {
+        auto txRlp = b[1][i];
+        res.emplace_back( bytesRefFromTransactionRlp( txRlp ), CheckTransaction::Cheap, true,
+            EIP1559TransactionsPatch::isEnabledWhen(
+                blockInfo( numberFromHash( _blockHash ) - 1 ).timestamp() ) );
+    }
     return res;
 }
 
@@ -491,6 +508,10 @@ BlockDetails ClientBase::pendingDetails() const {
     auto li = Interface::blockDetails( LatestBlock );
     return BlockDetails( ( unsigned ) pm.number(), li.totalDifficulty + pm.difficulty(),
         pm.parentHash(), h256s{}, postSeal().blockData().size() );
+}
+
+EVMSchedule ClientBase::evmSchedule() const {
+    return sealEngine()->evmSchedule( bc().info().timestamp(), pendingInfo().number() );
 }
 
 u256 ClientBase::gasLimitRemaining() const {

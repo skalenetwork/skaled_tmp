@@ -12,14 +12,8 @@ set(sources
     SnapshotHashAgent.cpp
     UnsafeRegion.cpp
     TotalStorageUsedPatch.cpp
-    ContractStorageLimitPatch.cpp
-    ContractStorageZeroValuePatch.cpp
-    VerifyDaSigsPatch.cpp
     AmsterdamFixPatch.cpp
-    RevertableFSPatch.cpp
     OverlayFS.cpp
-    StorageDestructionPatch.cpp
-    POWCheckPatch.cpp
     SkipInvalidTransactionsPatch.cpp
 )
 
@@ -35,10 +29,7 @@ set(headers
     SnapshotHashAgent.h
     UnsafeRegion.h
     TotalStorageUsedPatch.h
-    ContractStorageLimitPatch.h
     AmsterdamFixPatch.h
-    RevertableFSPatch.h
-    POWCheckPatch.h
     OverlayFS.h
     SkipInvalidTransactionsPatch.h
 )
@@ -59,15 +50,16 @@ target_include_directories( skale PUBLIC
 		${CMAKE_SOURCE_DIR}/libconsensus/libzmq/include
 		${CMAKE_SOURCE_DIR}/libconsensus/jsoncpp/include
 		)
-#target_link_libraries(skale PUBLIC evm ethcore p2p devcrypto devcore ethereum PRIVATE jsoncpp Snappy::snappy Boost::fiber Boost::context)
-target_link_libraries(skale PUBLIC ethereum web3jsonrpc skutils
+
+target_link_libraries(skale PRIVATE ethereum web3jsonrpc historic skutils
 		"${DEPS_INSTALL_ROOT}/lib/libzmq.a"
         "${DEPS_INSTALL_ROOT}/lib/libsodium.a"
         bls
         pthread
         )
 target_compile_options( skale PRIVATE
-    -Wno-error=deprecated-copy -Wno-error=unused-result -Wno-error=unused-parameter -Wno-error=unused-variable -Wno-error=maybe-uninitialized
+    -Wno-error=deprecated-copy -Wno-error=unused-result -Wno-error=unused-parameter -Wno-unused-variable -Wno-error=maybe-uninitialized
+    -Wno-nonnull
     )
 
 #target_compile_options( skale PRIVATE -Weffc++ )

@@ -157,7 +157,7 @@ public:
     /// Execute a given transaction.
     /// This will change the state accordingly.
     std::pair< ExecutionResult, TransactionReceipt > execute( EnvInfo const& _envInfo,
-        SealEngineFace const& _sealEngine, Transaction const& _t,
+        eth::ChainOperationParams const& _chainParams, Transaction const& _t,
         skale::Permanence _p = skale::Permanence::Committed, OnOpFunc const& _onOp = OnOpFunc() );
 
 
@@ -296,6 +296,8 @@ public:
 
     void setRootFromDB();
 
+    uint64_t getAndResetBlockCommitTime();
+
 private:
     /// Turns all "touched" empty accounts into non-alive accounts.
     void removeEmptyAccounts();
@@ -345,6 +347,8 @@ private:
 
     AddressHash commitExternalChangesIntoTrieDB(
         AccountMap const& _cache, SecureTrieDB< Address, OverlayDB >& _state );
+
+    uint64_t m_totalTimeSpentInStateCommitsPerBlock = 0;
 };
 
 std::ostream& operator<<( std::ostream& _out, HistoricState const& _s );

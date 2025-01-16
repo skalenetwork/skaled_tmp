@@ -43,7 +43,7 @@ class KeyPair;
 namespace eth {
 class AccountHolder;
 struct TransactionSkeleton;
-class Interface;
+class Client;
 class LocalisedTransactionReceipt;
 }  // namespace eth
 }  // namespace dev
@@ -57,7 +57,7 @@ namespace _detail {
 // cache for transaction index mapping
 class GappedTransactionIndexCache {
 public:
-    GappedTransactionIndexCache( size_t _cacheSize, const dev::eth::Interface& _client )
+    GappedTransactionIndexCache( size_t _cacheSize, const dev::eth::Client& _client )
         : client( _client ), cacheSize( _cacheSize ) {
         assert( _cacheSize > 0 );
     }
@@ -116,7 +116,7 @@ private:
 private:
     mutable std::shared_mutex mtx;
 
-    const dev::eth::Interface& client;
+    const dev::eth::Client& client;
     const size_t cacheSize;
 
     enum { UNDEFINED = ( size_t ) -1 };
@@ -135,7 +135,7 @@ std::string exceptionToErrorMessage();
  */
 class Eth : public dev::rpc::EthFace, public skutils::json_config_file_accessor {
 public:
-    Eth( const std::string& configPath, eth::Interface& _eth, eth::AccountHolder& _ethAccounts );
+    Eth( const std::string& configPath, eth::Client& _eth, eth::AccountHolder& _ethAccounts );
 
     virtual RPCModules implementedModules() const override {
         return RPCModules{ RPCModule{ "eth", "1.0" } };
@@ -151,7 +151,7 @@ public:
     virtual bool eth_mining() override;
     virtual std::string eth_gasPrice() override;
     virtual Json::Value eth_accounts() override;
-    virtual std::string eth_blockNumber() override;
+    virtual std::string eth_blockNumber( const Json::Value& request ) override;
     virtual std::string eth_getBalance(
         std::string const& _address, std::string const& _blockNumber ) override;
     virtual std::string eth_getStorageAt( std::string const& _address, std::string const& _position,
@@ -216,13 +216,18 @@ public:
     virtual Json::Value eth_subscribe( Json::Value const& _transaction ) override;
     virtual Json::Value eth_unsubscribe( Json::Value const& _transaction ) override;
     virtual Json::Value setSchainExitTime( Json::Value const& _transaction ) override;
+    virtual Json::Value eth_createAccessList(
+        const Json::Value& param1, const std::string& param2 ) override;
+    virtual Json::Value eth_feeHistory(
+        dev::u256 param1, const std::string& param2, const Json::Value& param3 ) override;
+    virtual std::string eth_maxPriorityFeePerGas() override;
 
     void setTransactionDefaults( eth::TransactionSkeleton& _t );
 
 protected:
-    eth::Interface* client() { return &m_eth; }
+    eth::Client* client() { return &m_eth; }
 
-    eth::Interface& m_eth;
+    eth::Client& m_eth;
     eth::AccountHolder& m_ethAccounts;
 
     // a cache that maps the call request to the pair of response string and block number

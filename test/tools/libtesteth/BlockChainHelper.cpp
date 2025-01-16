@@ -21,6 +21,8 @@
  * that manage block/transaction import and test mining
  */
 
+#include <libethereum/SchainPatch.h>
+
 #include <libdevcore/TransientDirectory.h>
 #include <libethashseal/GenesisInfo.h>
 #include <libethereum/Block.h>
@@ -70,7 +72,7 @@ TestBlock::TestBlock( std::string const& _blockRLP ) : TestBlock() {
     for ( auto const& tr : root[1] ) {
         Transaction tx( tr.data(), CheckTransaction::Everything );
         TestTransaction testTx( tx );
-        m_transactionQueue.import( tx.rlp() );
+        m_transactionQueue.import( tx.toBytes() );
         m_testTransactions.push_back( testTx );
     }
 
@@ -119,8 +121,8 @@ void TestBlock::setState( State const& _state ) {
 
 void TestBlock::addTransaction( TestTransaction const& _tr ) {
     m_testTransactions.push_back( _tr );
-    if ( m_transactionQueue.import( _tr.transaction().rlp() ) != ImportResult::Success )
-        cnote << TestOutputHelper::get().testName() + " Test block failed importing transaction\n";
+    if ( m_transactionQueue.import( _tr.transaction().toBytes() ) != ImportResult::Success )
+        cnote << TestOutputHelper::get().testName() + " Test block failed importing transaction";
     recalcBlockHeaderBytes();
 }
 
@@ -381,11 +383,8 @@ void TestBlock::recalcBlockHeaderBytes() {
         txList.push_back( txi );
     RLPStream txStream;
     txStream.appendList( txList.size() );
-    for ( unsigned i = 0; i < txList.size(); ++i ) {
-        RLPStream txrlp;
-        txList[i].streamRLP( txrlp );
-        txStream.appendRaw( txrlp.out() );
-    }
+    for ( unsigned i = 0; i < txList.size(); ++i )
+        txStream.appendRaw( txList[i].toBytes() );
 
     RLPStream uncleStream;
     uncleStream.appendList( m_uncles.size() );
@@ -442,7 +441,7 @@ void TestBlock::populateFrom( TestBlock const& _original ) {
     m_transactionQueue.clear();
     TransactionQueue const& trQueue = _original.transactionQueue();
     for ( auto const& txi : trQueue.topTransactions( std::numeric_limits< unsigned >::max() ) )
-        m_transactionQueue.import( txi.rlp() );
+        m_transactionQueue.import( txi.toBytes() );
 
     m_uncles = _original.uncles();
     m_blockHeader = _original.blockHeader();
@@ -473,6 +472,9 @@ void TestBlockChain::reset( TestBlock const& _genesisBlock ) {
 }
 
 bool TestBlockChain::addBlock( TestBlock const& _block ) {
+
+    SchainPatch::useLatestBlockTimestamp(m_blockChain->info().timestamp());
+
     while ( true ) {
         try {
             _block.verify( *this );  // check that block header match TestBlock contents
@@ -494,6 +496,9 @@ bool TestBlockChain::addBlock( TestBlock const& _block ) {
 
         State st( block.state() );
         m_lastBlock.setState( st );
+
+        SchainPatch::useLatestBlockTimestamp(m_blockChain->info().timestamp());
+
         return true;
     }
 

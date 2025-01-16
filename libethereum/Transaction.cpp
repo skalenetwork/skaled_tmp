@@ -28,6 +28,7 @@
 #include <libdevcore/vector_ref.h>
 #include <libdevcrypto/Common.h>
 #include <libethcore/Exceptions.h>
+#include <libethereum/SchainPatch.h>
 #include <libevm/VMFace.h>
 
 using namespace std;
@@ -123,6 +124,18 @@ std::ostream& dev::eth::operator<<( std::ostream& _out, TransactionException con
     case TransactionException::InvalidContractDeployer:
         _out << "InvalidContractDeployer";
         break;
+    case TransactionException::RevertInstruction:
+        _out << "RevertInstruction";
+        break;
+    case TransactionException::InvalidZeroSignatureFormat:
+        _out << "InvalidZeroSignatureFormat";
+        break;
+    case TransactionException::AddressAlreadyUsed:
+        _out << "AddressAlreadyUsed";
+        break;
+    case TransactionException::WouldNotBeInBlock:
+        _out << "WouldNotBeInBlock";
+        break;
     default:
         _out << "Unknown";
         break;
@@ -151,11 +164,13 @@ Transaction::Transaction( const u256& _value, const u256& _gasPrice, const u256&
     const bytes& _data, const u256& _nonce )
     : TransactionBase( _value, _gasPrice, _gas, _data, _nonce ) {}
 
-Transaction::Transaction( bytesConstRef _rlpData, CheckTransaction _checkSig, bool _allowInvalid )
-    : TransactionBase( _rlpData, _checkSig, _allowInvalid ) {}
+Transaction::Transaction(
+    bytesConstRef _rlpData, CheckTransaction _checkSig, bool _allowInvalid, bool _eip1559Enabled )
+    : TransactionBase( _rlpData, _checkSig, _allowInvalid, _eip1559Enabled ) {}
 
-Transaction::Transaction( const bytes& _rlp, CheckTransaction _checkSig, bool _allowInvalid )
-    : Transaction( &_rlp, _checkSig, _allowInvalid ) {}
+Transaction::Transaction(
+    const bytes& _rlp, CheckTransaction _checkSig, bool _allowInvalid, bool _eip1559Enabled )
+    : Transaction( &_rlp, _checkSig, _allowInvalid, _eip1559Enabled ) {}
 
 bool Transaction::hasExternalGas() const {
     if ( !m_externalGasIsChecked ) {
@@ -180,19 +195,38 @@ u256 Transaction::gasPrice() const {
     }
 }
 
-void Transaction::checkOutExternalGas( u256 const& _difficulty ) {
-    assert( _difficulty > 0 );
-    if ( !m_externalGasIsChecked && !isInvalid() ) {
-        h256 hash = dev::sha3( sender().ref() ) ^ dev::sha3( nonce() ) ^ dev::sha3( gasPrice() );
+void Transaction::checkOutExternalGas(
+    const ChainParams& _cp, time_t _committedBlockTimestamp, uint64_t _committedBlockNumber ) {
+    u256 const& difficulty = _cp.externalGasDifficulty;
+    assert( difficulty > 0 );
+    if ( !isInvalid() ) {
+        h256 hash;
+        if ( !ExternalGasPatch::isEnabledWhen( _committedBlockTimestamp ) ) {
+            hash = dev::sha3( sender().ref() ) ^ dev::sha3( nonce() ) ^ dev::sha3( gasPrice() );
+        } else {
+            // reset externalGas value
+            // we may face patch activation after txn was added to the queue but before it was
+            // executed. therefore we need to recalculate externalGas
+            m_externalGasIsChecked = false;
+            m_externalGas.reset();
+            hash = dev::sha3( sender().ref() ) ^ dev::sha3( nonce() ) ^
+                   dev::sha3( TransactionBase::gasPrice() );
+        }
         if ( !hash ) {
             hash = h256( 1 );
         }
-        u256 externalGas = ~u256( 0 ) / u256( hash ) / _difficulty;
+        u256 externalGas = ~u256( 0 ) / u256( hash ) / difficulty;
         if ( externalGas > 0 )
-            ctrace << "Mined gas: " << externalGas << endl;
-        if ( externalGas >= baseGasRequired( ConstantinopleSchedule ) ) {
+            ctrace << "Mined gas: " << externalGas;
+
+        EVMSchedule scheduleForUse = ConstantinopleSchedule;
+        if ( CorrectForkInPowPatch::isEnabledWhen( _committedBlockTimestamp ) )
+            scheduleForUse = _cp.makeEvmSchedule(
+                _committedBlockTimestamp, _committedBlockNumber );  // BUG should be +1
+
+        if ( externalGas >= baseGasRequired( scheduleForUse ) )
             m_externalGas = externalGas;
-        }
+
         m_externalGasIsChecked = true;
     }
 }

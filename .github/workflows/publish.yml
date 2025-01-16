@@ -21,21 +21,22 @@ jobs:
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
     steps:
       - name: update apt
-        run: sudo add-apt-repository ppa:ubuntu-toolchain-r/test; sudo apt-get update
+        run: | 
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test || true
+          sudo apt-get update || true
       - name: install packages
         run: |
           sudo apt-get -y remove libzmq* || true
-          sudo apt-get -y install software-properties-common
-          sudo apt-get -y install gcc-9 g++-9
+          sudo apt-get -y install software-properties-common gcc-11 g++-11 || true
 
-      - name: Use g++-9 and gcov-9 by default
+      - name: Use g++-11 and gcov-11 by default
         run: |
           echo "Updating all needed alternatives"
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 9
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 9
-          sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-9 9
-          sudo update-alternatives --install /usr/bin/gcov-dump gcov-dump /usr/bin/gcov-dump-9 9
-          sudo update-alternatives --install /usr/bin/gcov-tool gcov-tool /usr/bin/gcov-tool-9 9
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
+          sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-11 11
+          sudo update-alternatives --install /usr/bin/gcov-dump gcov-dump /usr/bin/gcov-dump-11 11
+          sudo update-alternatives --install /usr/bin/gcov-tool gcov-tool /usr/bin/gcov-tool-11 11
           echo "Checking alternative for gcc"
           which gcc
           gcc --version
@@ -79,7 +80,7 @@ jobs:
           string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
           message("::set-output name=timestamp::${current_date}")
       - name: Ccache cache files
-        uses: actions/cache@v1.1.0
+        uses: actions/cache@v4.2.0
         with:
           path: .ccache
           key: ${ { matrix.config.name } }-ccache-${ { steps.ccache_cache_timestamp.outputs.timestamp } }
@@ -87,8 +88,8 @@ jobs:
             ${ { matrix.config.name } }-ccache-
       - name: Build dependencies
         run: |
-          export CC=gcc-9
-          export CXX=g++-9
+          export CC=gcc-11
+          export CXX=g++-11
           export TARGET=all
           export CMAKE_BUILD_TYPE=RelWithDebInfo
           cd deps
@@ -98,8 +99,8 @@ jobs:
           cd ..
       - name: Configure all
         run: |
-          export CC=gcc-9
-          export CXX=g++-9
+          export CC=gcc-11
+          export CXX=g++-11
           export TARGET=all
           export CMAKE_BUILD_TYPE=RelWithDebInfo
           mkdir -p build
@@ -109,8 +110,8 @@ jobs:
           cd ..
       - name: Build all
         run: |
-          export CC=gcc-9
-          export CXX=g++-9
+          export CC=gcc-11
+          export CXX=g++-11
           export TARGET=all
           export CMAKE_BUILD_TYPE=RelWithDebInfo
           cd build
@@ -121,8 +122,8 @@ jobs:
           cd ..
       - name: Configure historic state build
         run: |
-          export CC=gcc-9
-          export CXX=g++-9
+          export CC=gcc-11
+          export CXX=g++-11
           export TARGET=all
           export CMAKE_BUILD_TYPE=RelWithDebInfo
           mkdir -p build-historic
@@ -132,8 +133,8 @@ jobs:
           cd ..
       - name: Build historic state version
         run: |
-          export CC=gcc-9
-          export CXX=g++-9
+          export CC=gcc-11
+          export CXX=g++-11
           export TARGET=all
           export CMAKE_BUILD_TYPE=RelWithDebInfo
           cd build-historic
@@ -150,6 +151,7 @@ jobs:
           export VERSION=$(cat VERSION)
           export VERSION=$(bash ./scripts/calculate_version.sh $BRANCH $VERSION)
           echo "::set-env name=VERSION::$VERSION"
+          echo "::set-env name=VERSION_ORIG::$VERSION"
           echo "Version $VERSION"
           ( test $BRANCH = "stable" && export PRERELEASE=false ) || export PRERELEASE=true
           echo "PRERELEASE=$PRERELEASE" >> $GITHUB_ENV
@@ -191,6 +193,7 @@ jobs:
           echo "Branch $BRANCH"
           export VERSION=$VERSION-historic
           echo "::set-env name=VERSION::$VERSION"
+          echo "::set-env name=VERSION_HISTORIC::$VERSION"
           echo "Version $VERSION"
           export RELEASE=true
           echo "::set-env name=RELEASE::$RELEASE"
@@ -214,12 +217,21 @@ jobs:
           asset_name: skaled-debug-historic
           asset_content_type: application/octet-stream
     outputs:
-      version: ${{ env.VERSION }}
+      version_orig: ${{ env.VERSION_ORIG }}
+      version_historic: ${{ env.VERSION_HISTORIC }}
     
   functional-tests:
     uses: ./.github/workflows/functional-tests.yml
-    name: Functional testing for build
+    name: Functional testing for orig build
     needs: [build]
     with:
-      version: ${{ needs.build.outputs.version }}
+      version: ${{ needs.build.outputs.version_orig }}
+    secrets: inherit
+
+  functional-tests-historic:
+    uses: ./.github/workflows/functional-tests.yml
+    name: Functional testing for historic build
+    needs: [build]
+    with:
+      version: ${{ needs.build.outputs.version_historic }}
     secrets: inherit

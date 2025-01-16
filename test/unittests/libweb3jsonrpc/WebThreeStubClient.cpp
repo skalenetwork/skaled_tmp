@@ -396,9 +396,11 @@ std::string WebThreeStubClient::eth_sendTransaction( const Json::Value& param1 )
             jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );
 }
 
-std::string WebThreeStubClient::eth_estimateGas( const Json::Value& param1 ) {
+std::string WebThreeStubClient::eth_estimateGas( const Json::Value& param1, const std::string& param2 ) {
     Json::Value p;
     p.append( param1 );
+    if(!param2.empty())
+        p.append( param2 );
     Json::Value result = this->CallMethod( "eth_estimateGas", p );
     if ( result.isString() )
         return result.asString();
@@ -803,6 +805,54 @@ bool WebThreeStubClient::eth_notePassword( const std::string& param1 ) {
     Json::Value result = this->CallMethod( "eth_notePassword", p );
     if ( result.isBool() )
         return result.asBool();
+    else
+        throw jsonrpc::JsonRpcException(
+            jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );
+}
+
+Json::Value WebThreeStubClient::eth_pendingTransactions() {
+    Json::Value p;
+    Json::Value result = this->CallMethod( "eth_pendingTransactions", p );
+    if ( result.isArray() )
+        return result;
+    else
+        throw jsonrpc::JsonRpcException(
+            jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );
+}
+
+std::string WebThreeStubClient::eth_maxPriorityFeePerGas() {
+    Json::Value p;
+    Json::Value result = this->CallMethod( "eth_maxPriorityFeePerGas", p );
+    if ( result.isString() )
+        return result.asString();
+    else
+        throw jsonrpc::JsonRpcException(
+            jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );
+}
+
+Json::Value WebThreeStubClient::eth_createAccessList( const Json::Value& param1, const std::string& param2 ) {
+    Json::Value p;
+    p.append( param1 );
+    p.append( param2 );
+    Json::Value result = this->CallMethod( "eth_createAccessList", p );
+    if ( result.isObject() )
+        return result;
+    else
+        throw jsonrpc::JsonRpcException(
+            jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );
+}
+
+Json::Value WebThreeStubClient::eth_feeHistory( const Json::Value& param1, const std::string& param2, const Json::Value& param3 ) {
+    Json::Value p;
+    if ( param1.isString() )
+        p.append( param1.asString() );
+    if ( param1.isUInt() )
+        p.append( param1.asUInt() );
+    p.append( param2 );
+    p.append( param3 );
+    Json::Value result = this->CallMethod( "eth_feeHistory", p );
+    if ( result.isObject() )
+        return result;
     else
         throw jsonrpc::JsonRpcException(
             jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );
@@ -1284,7 +1334,7 @@ std::string WebThreeStubClient::debug_preimage( const std::string& param1 ) {
             jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );
 }
 
-Json::Value WebThreeStubClient::debug_traceBlockByNumber( int param1, const Json::Value& param2 ) {
+Json::Value WebThreeStubClient::debug_traceBlockByNumber( const std::string& param1, const Json::Value& param2 ) {
     Json::Value p;
     p.append( param1 );
     p.append( param2 );
@@ -1338,6 +1388,16 @@ Json::Value WebThreeStubClient::debug_doBlocksDbCompaction() {
     Json::Value result = this->CallMethod( "debug_doBlocksDbCompaction", p );
     if ( result.isUInt64() )
         return result.asUInt64();
+    else
+        throw jsonrpc::JsonRpcException(
+            jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );
+}
+
+Json::Value WebThreeStubClient::debug_getFutureTransactions() {
+    Json::Value p;
+    Json::Value result = this->CallMethod( "debug_getFutureTransactions", p );
+    if ( result.isArray() )
+        return result;
     else
         throw jsonrpc::JsonRpcException(
             jsonrpc::Errors::ERROR_CLIENT_INVALID_RESPONSE, result.toStyledString() );

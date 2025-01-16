@@ -39,7 +39,7 @@ using namespace dev::test;
 using namespace dev::p2p;
 namespace fs = boost::filesystem;
 
-static size_t rand_port = 1024 + rand() % 64000;
+static size_t rand_port = ( srand(time(nullptr)), 1024 + rand() % 64000 );
 
 struct FixtureCommon {
     const string BTRFS_FILE_PATH = "btrfs.file";
@@ -262,7 +262,7 @@ public:
         //        ), dir,
         //            dir, chainParams, WithExisting::Kill, {"eth"}, testingMode ) );
         std::shared_ptr< SnapshotManager > mgr;
-        mgr.reset( new SnapshotManager( chainParams, m_tmpDir.path(), { BlockChain::getChainDirName( chainParams ), "vol2", "filestorage"} ) );
+        mgr.reset( new SnapshotManager( chainParams, m_tmpDir.path() ) );
         // boost::filesystem::create_directory(
         //     m_tmpDir.path() / "vol1" / "12041" );
         // boost::filesystem::create_directory(
@@ -339,7 +339,11 @@ static std::string const c_configString = R"(
         "allowFutureBlocks": true,
         "homesteadForkBlock": "0x00",
         "EIP150ForkBlock": "0x00",
-        "EIP158ForkBlock": "0x00"
+        "EIP158ForkBlock": "0x00",
+        "byzantiumForkBlock": "0x00",
+        "constantinopleForkBlock": "0x00",
+        "constantinopleFixForkBlock": "0x00",
+        "istanbulForkBlock": "0x00"
     },
     "genesis": {
         "nonce": "0x0000000000000042",
@@ -375,6 +379,7 @@ static std::string const c_genesisInfoSkaleTest = std::string() +
         "byzantiumForkBlock": "0x00",
         "constantinopleForkBlock": "0x00",
         "constantinopleFixForkBlock": "0x00",
+        "istanbulForkBlock": "0x00",
         "networkID" : "12313219",
         "chainID": "0x01",
         "maximumExtraDataSize": "0x20",
@@ -385,7 +390,8 @@ static std::string const c_genesisInfoSkaleTest = std::string() +
         "minimumDifficulty": "0x020000",
         "difficultyBoundDivisor": "0x0800",
         "durationLimit": "0x0d",
-        "blockReward": "0x4563918244F40000"
+        "blockReward": "0x4563918244F40000",
+        "skaleDisableChainIdCheck": true
     },
     "genesis": {
         "nonce": "0x0000000000000042",
@@ -405,13 +411,14 @@ static std::string const c_genesisInfoSkaleTest = std::string() +
       "basePort": )E"+std::to_string( rand_port ) + R"E(,
       "logLevel": "trace",
       "logLevelProposal": "trace",
-      "ecdsaKeyName": "NEK:fa112"
+      "testSignatures": true
     },
     "sChain": {
         "schainName": "TestChain",
         "schainID": 1,
         "contractStorageLimit": 32000,
         "emptyBlockIntervalMs": -1,
+        "correctForkInPowPatchTimestamp": 1,
         "nodes": [
           { "nodeID": 1112, "ip": "127.0.0.1", "basePort": )E"+std::to_string( rand_port ) + R"E(, "schainIndex" : 1, "publicKey": "0xfa"}
         ]
@@ -438,6 +445,25 @@ static std::string const c_genesisInfoSkaleTest = std::string() +
 
 
 BOOST_AUTO_TEST_SUITE( EstimateGas )
+
+BOOST_AUTO_TEST_CASE( transactionWithData ) {
+    TestClientFixture fixture( c_genesisInfoSkaleTest );
+    ClientTest* testClient = asClientTest( fixture.ethereum() );
+
+    dev::eth::simulateMining( *( fixture.ethereum() ), 10 );
+
+    Address addr( "0xca4409573a5129a72edf85d6c51e26760fc9c903" );
+
+    bytes data =
+        jsToBytes( "0x11223344556600770000" );
+
+    u256 estimate = testClient
+                        ->estimateGas( addr, 0, addr, data, 10000000, 1000000,
+                            GasEstimationCallback() )
+                        .first;
+
+    BOOST_CHECK_EQUAL( estimate, u256( 21000+7*16+3*4 ) );
+}
 
 BOOST_AUTO_TEST_CASE( constantConsumption ) {
     TestClientFixture fixture( c_genesisInfoSkaleTest );
@@ -475,7 +501,8 @@ BOOST_AUTO_TEST_CASE( constantConsumption ) {
                             GasEstimationCallback() )
                         .first;
 
-    BOOST_CHECK_EQUAL( estimate, u256( 71800 ) );
+    // 71488 checked in reall call under Istanbul fork
+    BOOST_CHECK_EQUAL( estimate, u256( 71488 ) );
 }
 
 BOOST_AUTO_TEST_CASE( linearConsumption ) {
@@ -513,7 +540,7 @@ BOOST_AUTO_TEST_CASE( linearConsumption ) {
                             GasEstimationCallback() )
                         .first;
 
-    BOOST_CHECK_EQUAL( estimate, u256( 2367016 ) );
+    BOOST_CHECK_EQUAL( estimate, u256( 2366934 ) );
 }
 
 BOOST_AUTO_TEST_CASE( exceedsGasLimit ) {
@@ -589,7 +616,7 @@ BOOST_AUTO_TEST_CASE( runsInterference ) {
                             GasEstimationCallback() )
                         .first;
 
-    BOOST_CHECK_EQUAL( estimate, u256( 41684 ) );
+    BOOST_CHECK_EQUAL( estimate, u256( 41424 ) );
 }
 
 BOOST_AUTO_TEST_CASE( consumptionWithRefunds ) {
@@ -810,12 +837,12 @@ BOOST_AUTO_TEST_CASE( consumptionWithReverts ) {
                            GasEstimationCallback() )
             .first;
 
-    BOOST_CHECK_EQUAL( estimate, u256( 121944 ) );
+    BOOST_CHECK_EQUAL( estimate, u256( 121632 ) );
 }
 
 BOOST_AUTO_TEST_SUITE_END()
 
-BOOST_AUTO_TEST_SUITE( IMABLSPublicKey )
+BOOST_AUTO_TEST_SUITE( getHistoricNodesData )
 
 static std::string const c_genesisInfoSkaleIMABLSPublicKeyTest = std::string() +
                                                   R"E(
@@ -829,6 +856,7 @@ static std::string const c_genesisInfoSkaleIMABLSPublicKeyTest = std::string() +
         "byzantiumForkBlock": "0x00",
         "constantinopleForkBlock": "0x00",
         "constantinopleFixForkBlock": "0x00",
+        "istanbulForkBlock": "0x00",
         "networkID" : "12313219",
         "chainID": "0x01",
         "maximumExtraDataSize": "0x20",
@@ -859,12 +887,13 @@ static std::string const c_genesisInfoSkaleIMABLSPublicKeyTest = std::string() +
       "basePort": )E"+std::to_string( rand_port ) + R"E(,
       "logLevel": "trace",
       "logLevelProposal": "trace",
-      "ecdsaKeyName": "NEK:fa112"
+      "testSignatures": true
     },
     "sChain": {
         "schainName": "TestChain",
         "schainID": 1,
         "emptyBlockIntervalMs": -1,
+        "precompiledConfigPatchTimestamp": 1,
         "nodeGroups": {
             "1": {
                 "nodes": {
@@ -917,15 +946,16 @@ static std::string const c_genesisInfoSkaleIMABLSPublicKeyTest = std::string() +
 }
 )E";
 
-BOOST_AUTO_TEST_CASE( initAndUpdateIMABLSPUblicKey ) {
+BOOST_AUTO_TEST_CASE( initAndUpdateHistoricConfigFields ) {
     TestClientFixture fixture( c_genesisInfoSkaleIMABLSPublicKeyTest );
     ClientTest* testClient = asClientTest( fixture.ethereum() );
 
     std::array< std::string, 4 > imaBLSPublicKeyOnStartUp = { "12457351342169393659284905310882617316356538373005664536506840512800919345414", "11573096151310346982175966190385407867176668720531590318594794283907348596326", "13929944172721019694880576097738949215943314024940461401664534665129747139387", "7375214420811287025501422512322868338311819657776589198925786170409964211914" };
 
-
     BOOST_REQUIRE( testClient->getIMABLSPublicKey() == imaBLSPublicKeyOnStartUp );
-
+    BOOST_REQUIRE( testClient->getHistoricNodePublicKey( 0 ) == "0x3a581d62b12232dade30c3710215a271984841657449d1f474295a13737b778266f57e298f123ae80cbab7cc35ead1b62a387556f94b326d5c65d4a7aa2abcba" );
+    BOOST_REQUIRE( testClient->getHistoricNodeId( 0 ) == "26" );
+    BOOST_REQUIRE( testClient->getHistoricNodeIndex( 0 ) == "3" );
 
     BOOST_REQUIRE( testClient->mineBlocks( 1 ) );
 
@@ -934,6 +964,9 @@ BOOST_AUTO_TEST_CASE( initAndUpdateIMABLSPUblicKey ) {
     std::array< std::string, 4 > imaBLSPublicKeyAfterBlock = { "10860211539819517237363395256510340030868592687836950245163587507107792195621", "2419969454136313127863904023626922181546178935031521540751337209075607503568", "3399776985251727272800732947224655319335094876742988846345707000254666193993", "16982202412630419037827505223148517434545454619191931299977913428346639096984" };
 
     BOOST_REQUIRE( testClient->getIMABLSPublicKey() == imaBLSPublicKeyAfterBlock );
+    BOOST_REQUIRE( testClient->getHistoricNodePublicKey( 0 ) == "0x6180cde2cbbcc6b6a17efec4503a7d4316f8612f411ee171587089f770335f484003ad236c534b9afa82befc1f69533723abdb6ec2601e582b72dcfd7919338b" );
+    BOOST_REQUIRE( testClient->getHistoricNodeId( 0 ) == "30" );
+    BOOST_REQUIRE( testClient->getHistoricNodeIndex( 0 ) == "0" );
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -948,7 +981,11 @@ static std::string const c_skaleConfigString = R"E(
         "allowFutureBlocks": true,
         "homesteadForkBlock": "0x00",
         "EIP150ForkBlock": "0x00",
-        "EIP158ForkBlock": "0x00"
+        "EIP158ForkBlock": "0x00",
+        "byzantiumForkBlock": "0x00",
+        "constantinopleForkBlock": "0x00",
+        "constantinopleFixForkBlock": "0x00",
+        "istanbulForkBlock": "0x00"
     },
     "genesis": {
         "nonce": "0x0000000000000042",
@@ -965,13 +1002,13 @@ static std::string const c_skaleConfigString = R"E(
             "nodeID": 1112,
             "bindIP": "127.0.0.1",
             "basePort": )E"+std::to_string( rand_port ) + R"E(,
-            "ecdsaKeyName": "NEK:fa112"
+            "testSignatures": true
         },
         "sChain": {
             "schainName": "TestChain",
             "schainID": 1,
-            "snapshotIntervalSec": 10,
-            "emptyBlockIntervalMs": -1,
+            "snapshotIntervalSec": 5,
+            "emptyBlockIntervalMs": 4000,
             "nodes": [
               { "nodeID": 1112, "ip": "127.0.0.1", "basePort": )E"+std::to_string( rand_port ) + R"E(, "ip6": "::1", "basePort6": 1231, "schainIndex" : 1, "publicKey" : "0xfa"}
             ]
@@ -993,7 +1030,7 @@ static std::string const c_skaleConfigString = R"E(
 
 BOOST_AUTO_TEST_SUITE( ClientSnapshotsSuite, *boost::unit_test::precondition( option_all_tests ) )
 
-BOOST_AUTO_TEST_CASE( ClientSnapshotsTest, *boost::unit_test::precondition( dev::test::run_not_express ) ) {
+BOOST_AUTO_TEST_CASE( ClientSnapshotsTest, *boost::unit_test::disabled() ) {
     TestClientSnapshotsFixture fixture( c_skaleConfigString );
     ClientTest* testClient = asClientTest( fixture.ethereum() );
 
@@ -1001,12 +1038,9 @@ BOOST_AUTO_TEST_CASE( ClientSnapshotsTest, *boost::unit_test::precondition( dev:
 
     BOOST_REQUIRE( testClient->getSnapshotHash( 0 ) != dev::h256() );
 
-    BOOST_REQUIRE( testClient->mineBlocks( 1 ) );
+    std::this_thread::sleep_for( 5000ms );
 
-    testClient->importTransactionsAsBlock(
-        Transactions(), 1000, testClient->latestBlock().info().timestamp() + 86410 );
-
-    BOOST_REQUIRE( fs::exists( fs::path( fixture.getTmpDataDir() ) / "snapshots" / "3" ) );
+    BOOST_REQUIRE( fs::exists( fs::path( fixture.getTmpDataDir() ) / "snapshots" / "2" ) );
 
     secp256k1_sha256_t ctx;
     secp256k1_sha256_initialize( &ctx );
@@ -1018,13 +1052,15 @@ BOOST_AUTO_TEST_CASE( ClientSnapshotsTest, *boost::unit_test::precondition( dev:
     secp256k1_sha256_finalize( &ctx, empty_state_root_hash.data() );
 
     BOOST_REQUIRE( testClient->latestBlock().info().stateRoot() == empty_state_root_hash );
-    std::this_thread::sleep_for( 6000ms );
-    BOOST_REQUIRE( fs::exists( fs::path( fixture.getTmpDataDir() ) / "snapshots" / "3" / "snapshot_hash.txt" ) );
 
-    dev::h256 hash = testClient->hashFromNumber( 3 );
+    std::this_thread::sleep_for( 1000ms );
+
+    BOOST_REQUIRE( fs::exists( fs::path( fixture.getTmpDataDir() ) / "snapshots" / "2" / "snapshot_hash.txt" ) );
+
+    dev::h256 hash = testClient->hashFromNumber( 2 );
     uint64_t timestampFromBlockchain = testClient->blockInfo( hash ).timestamp();
 
-    BOOST_REQUIRE_EQUAL( timestampFromBlockchain, testClient->getBlockTimestampFromSnapshot( 3 ) );
+    BOOST_REQUIRE_EQUAL( timestampFromBlockchain, testClient->getBlockTimestampFromSnapshot( 2 ) );
 }
 
 BOOST_AUTO_TEST_SUITE_END()

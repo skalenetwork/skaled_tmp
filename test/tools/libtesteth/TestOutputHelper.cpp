@@ -20,6 +20,7 @@
  * Fixture class for boost output when running testeth
  */
 
+#include <libethereum/SchainPatch.h>
 #include <libethashseal/Ethash.h>
 #include <libethcore/BasicAuthority.h>
 #include <test/tools/libtesteth/Options.h>

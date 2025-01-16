@@ -28,6 +28,7 @@
 
 #include <libdevcore/Common.h>
 #include <libethereum/Precompiled.h>
+#include <libethereum/SchainPatchEnum.h>
 
 #include "libethcore/Common.h"
 #include "libethcore/EVMSchedule.h"
@@ -51,7 +52,10 @@ public:
         u256 const& _blockNumber ) const {
         return m_cost( _in, _chainParams, _blockNumber );
     }
-    std::pair< bool, bytes > execute( bytesConstRef _in ) const { return m_execute( _in ); }
+    std::pair< bool, bytes > execute(
+        bytesConstRef _in, skale::OverlayFS* _overlayFS = nullptr ) const {
+        return m_execute( _in, _overlayFS );
+    }
 
     u256 const& startingBlock() const { return m_startingBlock; }
 
@@ -68,6 +72,9 @@ private:
 };
 
 static constexpr int64_t c_infiniteBlockNumber = std::numeric_limits< int64_t >::max();
+// default value for leveldbReopenIntervalMs is 1 day
+// negative value means reopenings are disabled
+static constexpr int64_t c_defaultLevelDBReopenIntervalMs = 24 * 60 * 60 * 1000;
 
 /// skale
 struct NodeInfo {
@@ -86,6 +93,7 @@ public:
     bool syncNode;
     bool archiveMode;
     bool syncFromCatchup;
+    bool testSignatures;
 
     NodeInfo( std::string _name = "TestNode", u256 _id = 1, std::string _ip = "127.0.0.11",
         uint16_t _port = 11111, std::string _ip6 = "::1", uint16_t _port6 = 11111,
@@ -103,7 +111,8 @@ public:
                 "11559732032986387107991004021392285783925812861821192530917403151452391805634",
                 "8495653923123431417604973247489272438418190587263600148770280649306958101930",
                 "4082367875863433681332203403145435568316851327593401208105741076214120093531" },
-        bool _syncNode = false, bool _archiveMode = false, bool _syncFromCatchup = false ) {
+        bool _syncNode = false, bool _archiveMode = false, bool _syncFromCatchup = false,
+        bool _testSignatures = true ) {
         name = _name;
         id = _id;
         ip = _ip;
@@ -118,6 +127,7 @@ public:
         syncNode = _syncNode;
         archiveMode = _archiveMode;
         syncFromCatchup = _syncFromCatchup;
+        testSignatures = _testSignatures;
     }
 };
 
@@ -168,14 +178,14 @@ public:
     bool freeContractDeployment = false;
     bool multiTransactionMode = false;
     int emptyBlockIntervalMs = -1;
+    int64_t levelDBReopenIntervalMs = -1;
     size_t t = 1;
-    time_t revertableFSPatchTimestamp = 0;
-    time_t contractStoragePatchTimestamp = 0;
-    time_t contractStorageZeroValuePatchTimestamp = 0;
-    time_t verifyDaSigsPatchTimestamp = 0;
-    time_t storageDestructionPatchTimestamp = 0;
-    time_t powCheckPatchTimestamp = 0;
-    time_t skipInvalidTransactionsPatchTimestamp = 0;
+
+    // key is patch name
+    // public - for tests, don't access it directly
+    std::vector< time_t > _patchTimestamps =
+        std::vector< time_t >( static_cast< int >( SchainPatchEnum::PatchesCount ) );
+    time_t getPatchTimestamp( SchainPatchEnum _patchEnum ) const;
 
     SChain() {
         name = "TestChain";
@@ -203,8 +213,10 @@ private:
     u256 m_blockReward;
 
 public:
-    EVMSchedule const& scheduleForBlockNumber( u256 const& _blockNumber ) const;
+    EVMSchedule const makeEvmSchedule(
+        time_t _committedBlockTimestamp, u256 const& _workingBlockNumber ) const;
     u256 blockReward( EVMSchedule const& _schedule ) const;
+    u256 blockReward( time_t _committedBlockTimestamp, u256 const& _workingBlockNumber ) const;
     void setBlockReward( u256 const& _newBlockReward );
     u256 maximumExtraDataSize = 1024;
     u256 accountStartNonce = 0;
@@ -250,6 +262,25 @@ public:
     u256 externalGasDifficulty = ~u256( 0 );
     typedef std::vector< std::string > vecAdminOrigins_t;
     vecAdminOrigins_t vecAdminOrigins;  // wildcard based folters for IP addresses
+    int getLogsBlocksLimit = -1;
+
+    time_t getPatchTimestamp( SchainPatchEnum _patchEnum ) const;
+
+    bool isPrecompiled( Address const& _a, u256 const& _blockNumber ) const {
+        return precompiled.count( _a ) != 0 && _blockNumber >= precompiled.at( _a ).startingBlock();
+    }
+    bigint costOfPrecompiled(
+        Address const& _a, bytesConstRef _in, u256 const& _blockNumber ) const {
+        return precompiled.at( _a ).cost( _in, *this, _blockNumber );
+    }
+    std::pair< bool, bytes > executePrecompiled( Address const& _a, bytesConstRef _in, u256 const&,
+        skale::OverlayFS* _overlayFS = nullptr ) const {
+        return precompiled.at( _a ).execute( _in, _overlayFS );
+    }
+    bool precompiledExecutionAllowedFrom(
+        Address const& _a, Address const& _from, bool _readOnly ) const {
+        return precompiled.at( _a ).executionAllowedFrom( _from, _readOnly );
+    }
 };
 
 }  // namespace eth

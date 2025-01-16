@@ -89,13 +89,18 @@ public:
     }
 
     uint64_t checkOracleResult( const string&
-           /*_receipt*/, string& /*_result */) {
+           /*_receipt*/, string& /*_result */) override {
         return 0;
     }
 
-    map< string, uint64_t > getConsensusDbUsage() const {
+    map< string, uint64_t > getConsensusDbUsage() const override {
         return map< string, uint64_t >();
     };
+
+    virtual ConsensusInterface::SyncInfo getSyncInfo() override {
+        return ConsensusInterface::SyncInfo{};
+    };
+
 };
 
 class ConsensusTestStubFactory : public ConsensusFactory {
@@ -118,20 +123,23 @@ struct SkaleHostFixture : public TestOutputHelperFixture {
         chainParams.allowFutureBlocks = true;
         chainParams.difficulty = chainParams.minimumDifficulty;
         chainParams.gasLimit = chainParams.maxGasLimit;
-        chainParams.byzantiumForkBlock = 0;
+        chainParams.istanbulForkBlock = 0;
         // add random extra data to randomize genesis hash and get random DB path,
         // so that tests can be run in parallel
         // TODO: better make it use ethemeral in-memory databases
         chainParams.extraData = h256::random().asBytes();
         chainParams.sChain.nodeGroups = { { {}, uint64_t(-1), {"0", "0", "1", "0"} } };
         chainParams.nodeInfo.port = chainParams.nodeInfo.port6 = rand_port;
+        chainParams.nodeInfo.testSignatures = true;
         chainParams.sChain.nodes[0].port = chainParams.sChain.nodes[0].port6 = rand_port;
 
         // not 0-timestamp genesis - to test patch
-        chainParams.timestamp = 1;
+        chainParams.timestamp = std::time( NULL ) - 5;
 
         if( params.count("multiTransactionMode") && stoi( params.at( "multiTransactionMode" ) ) )
             chainParams.sChain.multiTransactionMode = true;
+        if( params.count("skipInvalidTransactionsPatchTimestamp") && stoi( params.at( "skipInvalidTransactionsPatchTimestamp" ) ) )
+            chainParams.sChain._patchTimestamps[static_cast<size_t>(SchainPatchEnum::SkipInvalidTransactionsPatch)] = stoi( params.at( "skipInvalidTransactionsPatchTimestamp" ) );
 
         accountHolder.reset( new FixedAccountHolder( [&]() { return client.get(); }, {} ) );
         accountHolder->setAccounts( {coinbase, account2} );
@@ -172,9 +180,7 @@ struct SkaleHostFixture : public TestOutputHelperFixture {
 
     bytes bytes_from_json( const Json::Value& json ) {
         Transaction tx = tx_from_json( json );
-        RLPStream stream;
-        tx.streamRLP( stream );
-        return stream.out();
+        return tx.toBytes();
     }
 
     TransactionQueue* tq;
@@ -227,16 +233,17 @@ struct SkaleHostFixture : public TestOutputHelperFixture {
     { u256 balanceAfter = client->balanceAt( senderAddress );    \
     BOOST_REQUIRE_GE( balanceBefore - balanceAfter, decrease ); }
 
-BOOST_FIXTURE_TEST_SUITE( SkaleHostSuite, SkaleHostFixture )  //, *boost::unit_test::disabled() )
+BOOST_AUTO_TEST_SUITE( SkaleHostSuite )  //, *boost::unit_test::disabled() )
 
 auto skipInvalidTransactionsVariants = boost::unit_test::data::make({false, true});
 
 BOOST_DATA_TEST_CASE( validTransaction, skipInvalidTransactionsVariants, skipInvalidTransactionsFlag ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -254,9 +261,6 @@ BOOST_DATA_TEST_CASE( validTransaction, skipInvalidTransactionsVariants, skipInv
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx( ts, ar.second );
 
-    RLPStream stream;
-    tx.streamRLP( stream );
-
     h256 txHash = tx.sha3();
 
     CHECK_NONCE_BEGIN( senderAddress );
@@ -264,7 +268,7 @@ BOOST_DATA_TEST_CASE( validTransaction, skipInvalidTransactionsVariants, skipInv
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx.toBytes()}, utcTime(), 1U ) );
 
     REQUIRE_BLOCK_INCREASE( 1 );
     REQUIRE_BLOCK_SIZE( 1, 1 );
@@ -283,10 +287,10 @@ BOOST_DATA_TEST_CASE( transactionRlpBad, skipInvalidTransactionsVariants, skipIn
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
 
@@ -369,10 +373,11 @@ BOOST_DATA_TEST_CASE( transactionSigZero, skipInvalidTransactionsVariants, skipI
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -392,15 +397,12 @@ BOOST_DATA_TEST_CASE( transactionSigZero, skipInvalidTransactionsVariants, skipI
     VrsHackedTransaction* hacked_tx = reinterpret_cast< VrsHackedTransaction* >( &tx );
     hacked_tx->resetSignature();
 
-    RLPStream stream;
-    tx.streamRLP( stream, WithSignature );
-
     CHECK_NONCE_BEGIN( senderAddress );
     CHECK_BALANCE_BEGIN( senderAddress );
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx.toBytes()}, utcTime(), 1U ) );
 
     REQUIRE_BLOCK_INCREASE( 1 );
 
@@ -409,7 +411,7 @@ BOOST_DATA_TEST_CASE( transactionSigZero, skipInvalidTransactionsVariants, skipI
     }
     else {
         REQUIRE_BLOCK_SIZE( 1, 1 );
-        h256 txHash = sha3( stream.out() );
+        h256 txHash = sha3( tx.toBytes() );
         REQUIRE_BLOCK_TRANSACTION( 1, 0, txHash );
     }
 
@@ -424,10 +426,11 @@ BOOST_DATA_TEST_CASE( transactionSigBad, skipInvalidTransactionsVariants, skipIn
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -442,9 +445,7 @@ BOOST_DATA_TEST_CASE( transactionSigBad, skipInvalidTransactionsVariants, skipIn
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx( ts, ar.second );
 
-    RLPStream stream;
-    tx.streamRLP( stream );
-    bytes data = stream.out();
+    bytes data = tx.toBytes();
 
     // TODO try to spoil other fields
     data[43] = 0x7f;  // spoil v
@@ -479,10 +480,11 @@ BOOST_DATA_TEST_CASE( transactionGasIncorrect, skipInvalidTransactionsVariants, 
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -498,9 +500,6 @@ BOOST_DATA_TEST_CASE( transactionGasIncorrect, skipInvalidTransactionsVariants, 
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx( ts, ar.second );
 
-    RLPStream stream;
-    tx.streamRLP( stream );
-
     h256 txHash = tx.sha3();
 
     CHECK_NONCE_BEGIN( senderAddress );
@@ -508,7 +507,7 @@ BOOST_DATA_TEST_CASE( transactionGasIncorrect, skipInvalidTransactionsVariants, 
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx.toBytes()}, utcTime(), 1U ) );
 
     REQUIRE_BLOCK_INCREASE( 1 );
 
@@ -532,10 +531,11 @@ BOOST_DATA_TEST_CASE( transactionGasNotEnough, skipInvalidTransactionsVariants, 
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -567,9 +567,6 @@ BOOST_DATA_TEST_CASE( transactionGasNotEnough, skipInvalidTransactionsVariants, 
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx( ts, ar.second );
 
-    RLPStream stream;
-    tx.streamRLP( stream );
-
     h256 txHash = tx.sha3();
 
     CHECK_NONCE_BEGIN( senderAddress );
@@ -577,7 +574,7 @@ BOOST_DATA_TEST_CASE( transactionGasNotEnough, skipInvalidTransactionsVariants, 
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx.toBytes()}, utcTime(), 1U ) );
 
     REQUIRE_BLOCK_INCREASE( 1 );
     REQUIRE_BLOCK_SIZE( 1, 1 );
@@ -593,10 +590,11 @@ BOOST_DATA_TEST_CASE( transactionGasNotEnough, skipInvalidTransactionsVariants, 
 // nonce too big
 BOOST_DATA_TEST_CASE( transactionNonceBig, skipInvalidTransactionsVariants, skipInvalidTransactionsFlag ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -612,9 +610,6 @@ BOOST_DATA_TEST_CASE( transactionNonceBig, skipInvalidTransactionsVariants, skip
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx( ts, ar.second );
 
-    RLPStream stream;
-    tx.streamRLP( stream );
-
     h256 txHash = tx.sha3();
 
     CHECK_NONCE_BEGIN( senderAddress );
@@ -622,7 +617,7 @@ BOOST_DATA_TEST_CASE( transactionNonceBig, skipInvalidTransactionsVariants, skip
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx.toBytes()}, utcTime(), 1U ) );
 
     REQUIRE_BLOCK_INCREASE( 1 );
 
@@ -645,10 +640,11 @@ BOOST_DATA_TEST_CASE( transactionNonceSmall, skipInvalidTransactionsVariants, sk
                       //, *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -664,12 +660,9 @@ BOOST_DATA_TEST_CASE( transactionNonceSmall, skipInvalidTransactionsVariants, sk
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx1( ts, ar.second );
 
-    RLPStream stream1;
-    tx1.streamRLP( stream1 );
-
     // create 1 txns in 1 block
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream1.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx1.toBytes()}, utcTime(), 1U ) );
 
     // now our test txn
     json["value"] = jsToDecimal( toJS( 9000 * dev::eth::szabo ) );
@@ -678,9 +671,6 @@ BOOST_DATA_TEST_CASE( transactionNonceSmall, skipInvalidTransactionsVariants, sk
     ar = accountHolder->authenticate( ts );
     Transaction tx2( ts, ar.second );
 
-    RLPStream stream2;
-    tx2.streamRLP( stream2 );
-
     h256 txHash = tx2.sha3();
 
     CHECK_NONCE_BEGIN( senderAddress );
@@ -688,7 +678,7 @@ BOOST_DATA_TEST_CASE( transactionNonceSmall, skipInvalidTransactionsVariants, sk
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream2.out()}, utcTime(), 2U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx2.toBytes()}, utcTime(), 2U ) );
 
     REQUIRE_BLOCK_INCREASE( 1 );
 
@@ -709,10 +699,11 @@ BOOST_DATA_TEST_CASE( transactionNonceSmall, skipInvalidTransactionsVariants, sk
 // not enough cash
 BOOST_DATA_TEST_CASE( transactionBalanceBad, skipInvalidTransactionsVariants, skipInvalidTransactionsFlag ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -728,9 +719,6 @@ BOOST_DATA_TEST_CASE( transactionBalanceBad, skipInvalidTransactionsVariants, sk
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx( ts, ar.second );
 
-    RLPStream stream;
-    tx.streamRLP( stream );
-
     h256 txHash = tx.sha3();
 
     CHECK_NONCE_BEGIN( senderAddress );
@@ -738,7 +726,7 @@ BOOST_DATA_TEST_CASE( transactionBalanceBad, skipInvalidTransactionsVariants, sk
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx.toBytes()}, utcTime(), 1U ) );
 
     REQUIRE_BLOCK_INCREASE( 1 );
 
@@ -766,7 +754,7 @@ BOOST_DATA_TEST_CASE( transactionBalanceBad, skipInvalidTransactionsVariants, sk
     // make money
     dev::eth::simulateMining( *client, 1, senderAddress );
 
-    stub->createBlock( ConsensusExtFace::transactions_vector{stream.out()}, utcTime(), 2U );
+    stub->createBlock( ConsensusExtFace::transactions_vector{tx.toBytes()}, utcTime(), 2U );
 
     REQUIRE_BLOCK_SIZE( 2, 1 );
     REQUIRE_BLOCK_TRANSACTION( 2, 0, txHash );
@@ -787,10 +775,10 @@ BOOST_DATA_TEST_CASE( transactionGasBlockLimitExceeded, skipInvalidTransactionsV
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
 
-    if(skipInvalidTransactionsFlag){
-        const_cast<ChainParams&>(client->chainParams()).sChain.skipInvalidTransactionsPatchTimestamp = 1;
-    }
-    SkipInvalidTransactionsPatch::setTimestamp(client->chainParams().sChain.skipInvalidTransactionsPatchTimestamp);
+    SkaleHostFixture fixture( std::map<std::string, std::string>( {{"skipInvalidTransactionsPatchTimestamp", to_string(int(skipInvalidTransactionsFlag))}} ) );
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& stub = fixture.stub;
 
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
@@ -803,10 +791,7 @@ BOOST_DATA_TEST_CASE( transactionGasBlockLimitExceeded, skipInvalidTransactionsV
     json["nonce"] = 0;
     json["gasPrice"] = 0;
 
-    Transaction tx1 = tx_from_json( json );
-
-    RLPStream stream1;
-    tx1.streamRLP( stream1 );
+    Transaction tx1 = fixture.tx_from_json( json );
 
     h256 txHash1 = tx1.sha3();
 
@@ -815,10 +800,7 @@ BOOST_DATA_TEST_CASE( transactionGasBlockLimitExceeded, skipInvalidTransactionsV
     json["nonce"] = 1;
     json["gas"] = jsToDecimal( toJS( client->chainParams().gasLimit - 21000 + 1 ) );
 
-    Transaction tx2 = tx_from_json( json );
-
-    RLPStream stream2;
-    tx2.streamRLP( stream2 );
+    Transaction tx2 = fixture.tx_from_json( json );
 
     h256 txHash2 = tx2.sha3();
 
@@ -827,7 +809,7 @@ BOOST_DATA_TEST_CASE( transactionGasBlockLimitExceeded, skipInvalidTransactionsV
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW( stub->createBlock(
-        ConsensusExtFace::transactions_vector{stream1.out(), stream2.out()}, utcTime(), 1U ) );
+        ConsensusExtFace::transactions_vector{tx1.toBytes(), tx2.toBytes()}, utcTime(), 1U ) );
     BOOST_REQUIRE_EQUAL( client->number(), 1 );
 
     REQUIRE_BLOCK_INCREASE( 1 );
@@ -850,11 +832,19 @@ BOOST_DATA_TEST_CASE( transactionGasBlockLimitExceeded, skipInvalidTransactionsV
 
 // Last transaction should be dropped from block proposal
 BOOST_AUTO_TEST_CASE( gasLimitInBlockProposal ) {
+
+    SkaleHostFixture fixture;
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& skaleHost = fixture.skaleHost;
+    auto& stub = fixture.stub;
+    auto& account2 = fixture.account2;
+
     auto receiver = KeyPair::create();
 
     {
         auto wr_state = client->state().createStateModifyCopy();
-        wr_state.addBalance( account2.address(), client->chainParams().gasLimit * 1000 + dev::eth::ether );
+        wr_state.addBalance( fixture.account2.address(), client->chainParams().gasLimit * 1000 + dev::eth::ether );
         wr_state.commit();
     }
 
@@ -866,36 +856,38 @@ BOOST_AUTO_TEST_CASE( gasLimitInBlockProposal ) {
     json["nonce"] = 0;
     json["gasPrice"] = 1000;
 
-    Transaction tx1 = tx_from_json( json );
-
-    RLPStream stream1;
-    tx1.streamRLP( stream1 );
+    Transaction tx1 = fixture.tx_from_json( json );
 
     // 2 txn
     json["from"]  = toJS( account2.address() );
     json["gas"] = jsToDecimal( toJS( client->chainParams().gasLimit - 21000 + 1 ) );
 
-    Transaction tx2 = tx_from_json( json );
-
-    RLPStream stream2;
-    tx2.streamRLP( stream2 );
+    Transaction tx2 = fixture.tx_from_json( json );
 
     // put already broadcasted txns
-    skaleHost->receiveTransaction( toJS( stream1.out() ) );
-    skaleHost->receiveTransaction( toJS( stream2.out() ) );
+    skaleHost->receiveTransaction( toJS( tx1.toBytes() ) );
+    skaleHost->receiveTransaction( toJS( tx2.toBytes() ) );
 
     sleep( 1 );         // allow broadcast thread to move them
 
     ConsensusExtFace::transactions_vector proposal = stub->pendingTransactions( 100 );
 
     BOOST_REQUIRE_EQUAL( proposal.size(), 1 );
-    BOOST_REQUIRE( proposal[0] == stream1.out() );
+    BOOST_REQUIRE( proposal[0] == tx1.toBytes() );
 }
 
 // positive test for 4 next ones
 BOOST_AUTO_TEST_CASE( transactionDropReceive
                       //, *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
+
+    SkaleHostFixture fixture;
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& skaleHost = fixture.skaleHost;
+    auto& stub = fixture.stub;
+    auto& tq = fixture.tq;
+
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
 
@@ -907,8 +899,8 @@ BOOST_AUTO_TEST_CASE( transactionDropReceive
     json["nonce"] = 1;
 
     // 1st tx
-    Transaction tx1 = tx_from_json( json );
-    tx1.checkOutExternalGas( client->chainParams().difficulty );
+    Transaction tx1 = fixture.tx_from_json( json );
+    tx1.checkOutExternalGas( client->chainParams(), client->latestBlock().info().timestamp(), client->number() );
 
     // submit it!
     tq->import( tx1 );
@@ -917,7 +909,7 @@ BOOST_AUTO_TEST_CASE( transactionDropReceive
     u256 value2 = 20000 * dev::eth::szabo;
     json["value"] = jsToDecimal( toJS( value2 ) );
     json["nonce"] = 0;
-    bytes tx2 = bytes_from_json( json );
+    bytes tx2 = fixture.bytes_from_json( json );
 
     // receive it!
     skaleHost->receiveTransaction( toJS( tx2 ) );
@@ -930,7 +922,7 @@ BOOST_AUTO_TEST_CASE( transactionDropReceive
     json["value"] = jsToDecimal( toJS( value3 ) );
     json["nonce"] = 0;
 
-    bytes tx3 = bytes_from_json( json );
+    bytes tx3 = fixture.bytes_from_json( json );
 
     // return it from consensus!
     CHECK_BLOCK_BEGIN;
@@ -952,6 +944,13 @@ BOOST_AUTO_TEST_CASE( transactionDropReceive
 
 BOOST_AUTO_TEST_CASE( transactionDropQueue, 
     *boost::unit_test::precondition( dev::test::run_not_express ) ) {
+
+    SkaleHostFixture fixture;
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& stub = fixture.stub;
+    auto& tq = fixture.tq;
+
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
 
@@ -964,8 +963,8 @@ BOOST_AUTO_TEST_CASE( transactionDropQueue,
     json["nonce"] = 1;
 
     // 1st tx
-    Transaction tx1 = tx_from_json( json );
-    tx1.checkOutExternalGas( client->chainParams().difficulty );
+    Transaction tx1 = fixture.tx_from_json( json );
+    tx1.checkOutExternalGas( client->chainParams(), client->latestBlock().info().timestamp(), client->number() );
 
     // submit it!
     tq->import( tx1 );
@@ -978,10 +977,7 @@ BOOST_AUTO_TEST_CASE( transactionDropQueue,
     json["value"] = jsToDecimal( toJS( value2 ) );
     json["nonce"] = 0;
 
-    Transaction tx2 = tx_from_json( json );
-
-    RLPStream stream2;
-    tx2.streamRLP( stream2 );
+    Transaction tx2 = fixture.tx_from_json( json );
 
     h256 txHash2 = tx2.sha3();
 
@@ -991,7 +987,7 @@ BOOST_AUTO_TEST_CASE( transactionDropQueue,
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream2.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx2.toBytes()}, utcTime(), 1U ) );
     stub->setPriceForBlockId( 1, 1000 );
 
     REQUIRE_BLOCK_INCREASE( 1 );
@@ -1009,6 +1005,13 @@ BOOST_AUTO_TEST_CASE( transactionDropQueue,
 BOOST_AUTO_TEST_CASE( transactionDropByGasPrice
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
+
+    SkaleHostFixture fixture;
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& stub = fixture.stub;
+    auto& tq = fixture.tq;
+
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
 
@@ -1021,8 +1024,8 @@ BOOST_AUTO_TEST_CASE( transactionDropByGasPrice
     json["nonce"] = 1;
 
     // 1st tx
-    Transaction tx1 = tx_from_json( json );
-    tx1.checkOutExternalGas( client->chainParams().difficulty );
+    Transaction tx1 = fixture.tx_from_json( json );
+    tx1.checkOutExternalGas( client->chainParams(), client->latestBlock().info().timestamp(), client->number() );
 
     // submit it!
     tq->import( tx1 );
@@ -1035,10 +1038,7 @@ BOOST_AUTO_TEST_CASE( transactionDropByGasPrice
     json["value"] = jsToDecimal( toJS( value2 ) );
     json["nonce"] = 0;
 
-    Transaction tx2 = tx_from_json( json );
-
-    RLPStream stream2;
-    tx2.streamRLP( stream2 );
+    Transaction tx2 = fixture.tx_from_json( json );
 
     h256 txHash2 = tx2.sha3();
 
@@ -1048,7 +1048,7 @@ BOOST_AUTO_TEST_CASE( transactionDropByGasPrice
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW( stub->createBlock(
-        ConsensusExtFace::transactions_vector{stream2.out()}, utcTime(), 1U, 1000 ) );
+        ConsensusExtFace::transactions_vector{tx2.toBytes()}, utcTime(), 1U, 1000 ) );
     stub->setPriceForBlockId( 1, 1100 );
 
     REQUIRE_BLOCK_INCREASE( 1 );
@@ -1066,12 +1066,21 @@ BOOST_AUTO_TEST_CASE( transactionDropByGasPrice
 BOOST_AUTO_TEST_CASE( transactionDropByGasPriceReceive
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
+
+    SkaleHostFixture fixture;
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& skaleHost = fixture.skaleHost;
+    auto& stub = fixture.stub;
+    auto& tq = fixture.tq;
+    auto& account2 = fixture.account2;
+
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
 
     {
         auto wr_state = client->state().createStateModifyCopy();
-        wr_state.addBalance( account2.address(), 1 * ether );
+        wr_state.addBalance( fixture.account2.address(), 1 * ether );
         wr_state.commit();
     }
 
@@ -1084,14 +1093,11 @@ BOOST_AUTO_TEST_CASE( transactionDropByGasPriceReceive
     json["gasPrice"] = "1000";
 
     // 1st tx
-    Transaction tx1 = tx_from_json( json );
-    tx1.checkOutExternalGas( client->chainParams().difficulty );
-
-    RLPStream stream1;
-    tx1.streamRLP( stream1 );
+    Transaction tx1 = fixture.tx_from_json( json );
+    tx1.checkOutExternalGas( client->chainParams(), client->latestBlock().info().timestamp(), client->number() );
 
     // receive it!
-    skaleHost->receiveTransaction( toJS( stream1.out() ) );
+    skaleHost->receiveTransaction( toJS( tx1.toBytes() ) );
 
     sleep( 1 );
     BOOST_REQUIRE_EQUAL( tq->knownTransactions().size(), 1 );
@@ -1102,10 +1108,7 @@ BOOST_AUTO_TEST_CASE( transactionDropByGasPriceReceive
     json["value"] = jsToDecimal( toJS( value2 ) );
     json["nonce"] = 0;
 
-    Transaction tx2 = tx_from_json( json );
-
-    RLPStream stream2;
-    tx2.streamRLP( stream2 );
+    Transaction tx2 = fixture.tx_from_json( json );
 
     h256 txHash2 = tx2.sha3();
 
@@ -1115,7 +1118,7 @@ BOOST_AUTO_TEST_CASE( transactionDropByGasPriceReceive
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW( stub->createBlock(
-        ConsensusExtFace::transactions_vector{stream2.out()}, utcTime(), 1U, 1000 ) );
+        ConsensusExtFace::transactions_vector{tx2.toBytes()}, utcTime(), 1U, 1000 ) );
     stub->setPriceForBlockId( 1, 1100 );
 
     REQUIRE_BLOCK_INCREASE( 1 );
@@ -1132,6 +1135,12 @@ BOOST_AUTO_TEST_CASE( transactionDropByGasPriceReceive
 BOOST_AUTO_TEST_CASE( transactionRace
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
+
+    SkaleHostFixture fixture;
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& stub = fixture.stub;
+
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
 
@@ -1144,10 +1153,7 @@ BOOST_AUTO_TEST_CASE( transactionRace
     json["gasPrice"] = jsToDecimal( toJS( gasPrice ) );
     json["nonce"] = 0;
 
-    Transaction tx = tx_from_json( json );
-
-    RLPStream stream;
-    tx.streamRLP( stream );
+    Transaction tx = fixture.tx_from_json( json );
 
     h256 txHash = tx.sha3();
 
@@ -1160,7 +1166,7 @@ BOOST_AUTO_TEST_CASE( transactionRace
 
     // 2 get it from consensus
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx.toBytes()}, utcTime(), 1U ) );
     stub->setPriceForBlockId( 1, 1000 );
 
     REQUIRE_BLOCK_INCREASE( 1 );
@@ -1176,7 +1182,7 @@ BOOST_AUTO_TEST_CASE( transactionRace
 
     // 3 send new tx and see nonce
     json["nonce"] = 1;
-    Transaction tx2 = tx_from_json( json );
+    Transaction tx2 = fixture.tx_from_json( json );
 
     client->importTransaction( tx2 );
 }
@@ -1185,6 +1191,13 @@ BOOST_AUTO_TEST_CASE( transactionRace
 BOOST_AUTO_TEST_CASE( partialCatchUp
                       // , *boost::unit_test::precondition( dev::test::run_not_express )
                       ) {
+
+    SkaleHostFixture fixture;
+    auto& client = fixture.client;
+    auto& coinbase = fixture.coinbase;
+    auto& accountHolder = fixture.accountHolder;
+    auto& stub = fixture.stub;
+
     auto senderAddress = coinbase.address();
     auto receiver = KeyPair::create();
 
@@ -1199,12 +1212,9 @@ BOOST_AUTO_TEST_CASE( partialCatchUp
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx1( ts, ar.second );
 
-    RLPStream stream1;
-    tx1.streamRLP( stream1 );
-
     // create 1 txns in 1 block
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream1.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx1.toBytes()}, utcTime(), 1U ) );
 
     // now 2 txns
     json["value"] = jsToDecimal( toJS( 9000 * dev::eth::szabo ) );
@@ -1213,9 +1223,6 @@ BOOST_AUTO_TEST_CASE( partialCatchUp
     ar = accountHolder->authenticate( ts );
     Transaction tx2( ts, ar.second );
 
-    RLPStream stream2;
-    tx2.streamRLP( stream2 );
-
     h256 txHash = tx2.sha3();
 
     CHECK_NONCE_BEGIN( senderAddress );
@@ -1223,7 +1230,7 @@ BOOST_AUTO_TEST_CASE( partialCatchUp
     CHECK_BLOCK_BEGIN;
 
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream1.out(), stream2.out()}, utcTime(), 2U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx1.toBytes(), tx2.toBytes()}, utcTime(), 2U ) );
 
     REQUIRE_BLOCK_INCREASE( 1 );
     REQUIRE_BLOCK_SIZE( 2, 2 );
@@ -1234,6 +1241,10 @@ BOOST_AUTO_TEST_CASE( partialCatchUp
 }
 
 BOOST_AUTO_TEST_CASE( getBlockRandom ) {
+
+    SkaleHostFixture fixture;
+    auto& skaleHost = fixture.skaleHost;
+
     PrecompiledExecutor exec = PrecompiledRegistrar::executor( "getBlockRandom" );
     auto res = exec( bytesConstRef() );
     u256 blockRandom = skaleHost->getBlockRandom();
@@ -1242,6 +1253,10 @@ BOOST_AUTO_TEST_CASE( getBlockRandom ) {
 }
 
 BOOST_AUTO_TEST_CASE( getIMABLSPUblicKey ) {
+
+    SkaleHostFixture fixture;
+    auto& skaleHost = fixture.skaleHost;
+
     PrecompiledExecutor exec = PrecompiledRegistrar::executor( "getIMABLSPublicKey" );
     auto res = exec( bytesConstRef() );
     std::array< std::string, 4 > imaBLSPublicKey = skaleHost->getIMABLSPublicKey();
@@ -1279,13 +1294,10 @@ BOOST_FIXTURE_TEST_CASE( mtmAfterBigNonceMined, dummy,
     pair< bool, Secret > ar = accountHolder->authenticate( ts );
     Transaction tx1( ts, ar.second );
 
-    RLPStream stream1;
-    tx1.streamRLP( stream1 );
-
     h256 tx1Hash = tx1.sha3();
 
     // it will be put to "future" queue
-    skaleHost->receiveTransaction( toJS( stream1.out() ) );
+    skaleHost->receiveTransaction( toJS( tx1.toBytes() ) );
     sleep( 1 );
     ConsensusExtFace::transactions_vector proposal = stub->pendingTransactions( 100 );
     // and not proposed
@@ -1296,7 +1308,7 @@ BOOST_FIXTURE_TEST_CASE( mtmAfterBigNonceMined, dummy,
 
     // simulate it coming from another node
     BOOST_REQUIRE_NO_THROW(
-        stub->createBlock( ConsensusExtFace::transactions_vector{stream1.out()}, utcTime(), 1U ) );
+        stub->createBlock( ConsensusExtFace::transactions_vector{tx1.toBytes()}, utcTime(), 1U ) );
 
     REQUIRE_BLOCK_SIZE( 1, 1 );
     REQUIRE_BLOCK_TRANSACTION( 1, 0, tx1Hash );
@@ -1309,13 +1321,10 @@ BOOST_FIXTURE_TEST_CASE( mtmAfterBigNonceMined, dummy,
     ar = accountHolder->authenticate( ts );
     Transaction tx2( ts, ar.second );
 
-    RLPStream stream2;
-    tx2.streamRLP( stream2 );
-
     h256 tx2Hash = tx2.sha3();
 
     // post it to queue for "realism"
-    skaleHost->receiveTransaction( toJS( stream2.out() ) );
+    skaleHost->receiveTransaction( toJS( tx2.toBytes() ) );
     sleep( 1 );
     proposal = stub->pendingTransactions( 100 );
     BOOST_REQUIRE_EQUAL(proposal.size(), 2);
@@ -1332,7 +1341,7 @@ BOOST_FIXTURE_TEST_CASE( mtmAfterBigNonceMined, dummy,
     // 3 submit nonce = 1 again!
     // it should go to proposal
     BOOST_REQUIRE_THROW(
-        skaleHost->receiveTransaction( toJS( stream1.out() ) ),
+        skaleHost->receiveTransaction( toJS( tx1.toBytes() ) ),
         dev::eth::PendingTransactionAlreadyExists
     );
     sleep( 1 );
