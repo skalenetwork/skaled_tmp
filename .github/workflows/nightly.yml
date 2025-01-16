@@ -1,0 +1,118 @@
+name: Nightly test
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  identify-prs:
+    runs-on: ubuntu-latest
+    outputs:
+      pr-data: ${{ steps.get-prs.outputs.pr-data }}
+    steps:
+      - name: Identify Open Non-Draft PRs with Recent Commits
+        id: get-prs
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const oneDayAgo = new Date();
+            oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+            });
+
+            const filteredPRs = [];
+            for (const pr of prs.data) {
+              if (pr.draft) continue;
+
+              const commits = await github.rest.pulls.listCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+              });
+
+              const recentCommits = commits.data.filter(commit => {
+                const commitDate = new Date(commit.commit.author.date);
+                return commitDate >= oneDayAgo;
+              });
+
+              if (recentCommits.length > 0) {
+                filteredPRs.push({ branch: pr.head.ref, sha: pr.head.sha, number: pr.number });
+              }
+            }
+
+            console.log("Filtered PRs:", filteredPRs);
+            core.setOutput('pr-data', JSON.stringify(filteredPRs));
+
+  build:
+    needs: identify-prs
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        pr: ${{ fromJson(needs.identify-prs.outputs.pr-data) }}
+    env:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      NO_ULIMIT_CHECK: 1
+      ccache_compress: 'true'
+      ccache_compresslevel: 9
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ matrix.pr.branch }}
+
+      - name: Cache apt packages
+        uses: actions/cache@v2
+        with:
+          path: |
+            /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-cache
+          ttl: 1000000
+
+      - name: update apt
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test || true
+          sudo apt-get update || true
+
+      - name: install packages
+        run: |
+          sudo apt-get -y remove libzmq* || true
+          sudo apt-get -y install software-properties-common gcc-11 g++-11 || true
+
+      - name: Use g++-11 and gcov-11 by default
+        run: |
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
+          sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-11 11
+
+      - name: Test
+        id: test
+        run: |
+          mkdir -p /tmp/tests/
+          cd build/test
+          ./testeth --report_level=detailed -t JsonRpcSuite -- --all
+          cd ..
+        continue-on-error: true
+
+      - name: Update PR Status
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const state = '${{ steps.test.outcome }}' === 'success' ? 'success' : 'failure';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: '${{ matrix.pr.sha }}',
+              state,
+              context: 'Nightly tests',
+              description: state === 'success' ? 'Nightly tests passed' : 'Nightly tests failed',
+              target_url: `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`
+            });

@@ -1,16 +1,21 @@
 name: Build and test skaled
+
 on:
   push:
     branches-ignore:
       - 'master'
       - 'beta'
       - 'stable'
+  check_run:
+    workflows: ["Build and publish skaled container"]
+    types:
+      - completed
 defaults:
   run:
     shell: bash
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
         ACTIONS_ALLOW_UNSECURE_COMMANDS: true
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
