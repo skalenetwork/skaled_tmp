@@ -18,6 +18,7 @@ jobs:
     outputs:
       version_orig: ${{ steps.set-version.outputs.version_orig }}
       version_historic: ${{ steps.set-version.outputs.version_historic }}
+      release_url: ${{ steps.create_release.upload_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -38,23 +39,7 @@ jobs:
 
           echo "::set-output name=version_orig::$VERSION"
           echo "::set-output name=version_historic::$VERSION-historic"
-
-  build:
-    needs: calculate-version
-    uses: ./.github/workflows/setup-build-publish.yml
-    with:
-      branch_name: ${{ github.ref_name }}
-      image_version: ${{ needs.calculate-version.outputs.version_orig }}
-      cmake_options: ""
-      build_type: "RelWithDebInfo"
-      node_type: "orig"
-    secrets: inherit
-    
-  publish:
-    name: Publish
-    needs: [calculate-version, build]
-    runs-on: ubuntu-latest
-    steps:
+          
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@latest
@@ -66,30 +51,20 @@ jobs:
           draft: false
           prerelease: true
 
-      - name: Upload skaled binary to Release
-        uses: actions/upload-release-asset@latest
-        env: 
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/skaled/skaled
-          asset_name: skaled
-          asset_content_type: application/octet-stream
-
-      - name: Upload debug binary to Release
-        uses: actions/upload-release-asset@latest
-        env: 
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/skaled/skaled-debug
-          asset_name: skaled-debug
-          asset_content_type: application/octet-stream
+  build:
+    needs: calculate-version
+    uses: ./.github/workflows/setup-build-publish.yml
+    with:
+      image_version: ${{ needs.calculate-version.outputs.version_orig }}
+      build_type: "RelWithDebInfo"
+      node_type: core
+      release_url: ${{ needs.calculate-version.outputs.release_url }}
+    secrets: inherit
 
   functional-tests:
     uses: ./.github/workflows/functional-tests.yml
     name: Functional testing for orig build
-    needs: [publish, build]
+    needs: [calculate-version, build]
     with:
-      version: ${{ needs.build.outputs.version_orig }}
+      version: ${{ needs.calculate-version.outputs.version_orig }}
     secrets: inherit
