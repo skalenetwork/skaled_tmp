@@ -55,6 +55,7 @@ jobs:
     needs: calculate-version
     uses: ./.github/workflows/setup-build-publish.yml
     with:
+      branch_name: ${{ github.ref_name }}
       image_version: ${{ needs.calculate-version.outputs.version_orig }}
       build_type: "RelWithDebInfo"
       node_type: core
