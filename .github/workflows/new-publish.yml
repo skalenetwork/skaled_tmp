@@ -51,8 +51,8 @@ jobs:
     secrets: inherit
     
   publish:
-    name: Test
-    needs: build
+    name: Publish
+    needs: [calculate-version, build]
     runs-on: ubuntu-latest
     steps:
       - name: Create GitHub Release
@@ -89,7 +89,7 @@ jobs:
   functional-tests:
     uses: ./.github/workflows/functional-tests.yml
     name: Functional testing for orig build
-    needs: [build]
+    needs: [publish, build]
     with:
       version: ${{ needs.build.outputs.version_orig }}
     secrets: inherit
