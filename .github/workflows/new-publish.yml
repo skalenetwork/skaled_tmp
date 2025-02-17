@@ -1,4 +1,4 @@
-name: Build and publish skaled container
+name: New publish
 on:
   pull_request:
     types: [closed]
@@ -41,17 +41,20 @@ jobs:
 
   build:
     needs: calculate-version
+    uses: ./.github/workflows/setup-build-publish.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+      image_version: ${{ needs.calculate-version.outputs.version_orig }}
+      cmake_options: ""
+      build_type: "RelWithDebInfo"
+      node_type: "orig"
+    secrets: inherit
+    
+  publish:
+    name: Test
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Test
-        uses: ./.github/workflows/setup-build-publish.yml
-        with:
-          branch_name: ${{ github.ref_name }}
-          image_version: ${{ needs.calculate-version.outputs.version_orig }}
-          cmake_options: ""
-          build_type: "RelWithDebInfo"
-          node_type: core
-
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@latest
