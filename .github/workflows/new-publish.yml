@@ -41,7 +41,7 @@ jobs:
 
   build:
     needs: calculate-version
-    runs-on: self-host
+    runs-on: ubuntu-latest
     steps:
       - name: Test
         uses: ./.github/workflows/setup-build-publish.yml
