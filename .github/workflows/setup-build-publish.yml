@@ -146,15 +146,16 @@ jobs:
       #     cd build
       #     cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE $CMAKE_OPTS ..
       #     cd ..
-      # - name: Build all
-      #   run: |
-      #     export CC=gcc-11
-      #     export CXX=g++-11
-      #     export TARGET=all
-      #     export CMAKE_BUILD_TYPE=$BUILD_TYPE
-      #     cd build
-      #     make skaled -j$(nproc)
-      #     cd ..
+      - name: Build all
+        run: |
+          export CC=gcc-11
+          export CXX=g++-11
+          export TARGET=all
+          export CMAKE_BUILD_TYPE=$BUILD_TYPE
+          mkdir -p build/skaled
+          cd build/skaled
+          touch skaled
+          touch skaled-debug
       # - name: Build and publish container
       #   env:
       #     VERSION: ${{ env.VERSION }}
@@ -172,6 +173,7 @@ jobs:
       #     path: ./build/skaled/skaled
 
       - name: Upload skaled binary to Release
+        if: ${{ inputs.release_url != '' }}
         uses: actions/upload-release-asset@latest
         env: 
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -182,6 +184,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload debug binary to Release
+        if: ${{ inputs.release_url != '' }}
         uses: actions/upload-release-asset@latest
         env: 
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
