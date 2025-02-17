@@ -18,7 +18,7 @@ jobs:
     outputs:
       version_orig: ${{ steps.set-version.outputs.version_orig }}
       version_historic: ${{ steps.set-version.outputs.version_historic }}
-      release_url: ${{ steps.create_release.upload_url }}
+      release_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -34,8 +34,10 @@ jobs:
           VERSION=$(bash ./scripts/calculate_version.sh $BRANCH_NAME $VERSION)
           echo "Calculated version: $VERSION"
 
+          ( test $BRANCH = "stable" && export PRERELEASE=false ) || export PRERELEASE=true
           echo "VERSION_ORIG=$VERSION" >> $GITHUB_ENV
           echo "VERSION_HISTORIC=$VERSION-historic" >> $GITHUB_ENV
+          echo "PRERELEASE=$PRERELEASE" >> $GITHUB_ENV
 
           echo "::set-output name=version_orig::$VERSION"
           echo "::set-output name=version_historic::$VERSION-historic"
@@ -49,7 +51,7 @@ jobs:
           tag_name: ${{ steps.set-version.outputs.version_orig }}
           release_name: ${{ steps.set-version.outputs.version_orig }}
           draft: false
-          prerelease: true
+          prerelease: ${{ env.PRERELEASE }}
 
   build:
     needs: calculate-version
