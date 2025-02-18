@@ -64,10 +64,29 @@ jobs:
       release_url: ${{ needs.calculate-version.outputs.release_url }}
     secrets: inherit
 
+  build-historic:
+    needs: calculate-version
+    uses: ./.github/workflows/setup-build-publish.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+      image_version: ${{ needs.calculate-version.outputs.version_historic }}
+      build_type: "RelWithDebInfo"
+      node_type: historic
+      release_url: ${{ needs.calculate-version.outputs.release_url }}
+    secrets: inherit
+
   functional-tests:
     uses: ./.github/workflows/functional-tests.yml
     name: Functional testing for orig build
     needs: [calculate-version, build]
     with:
       version: ${{ needs.calculate-version.outputs.version_orig }}
+    secrets: inherit
+
+  functional-tests-historic:
+    uses: ./.github/workflows/functional-tests.yml
+    name: Functional testing for historic build
+    needs: [calculate-version, build-historic]
+    with:
+      version: ${{ needs.calculate-version.outputs.version_historic }}
     secrets: inherit
