@@ -55,6 +55,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           export CMAKE_OPTS="${{ inputs.cmake_options }}"
           echo "CMAKE_OPTS=$CMAKE_OPTS" >> $GITHUB_ENV
+          echo "$VERSION"
       - name: Prepare workflow variables (historic)
         if: inputs.node_type == 'historic'
         run: |
@@ -64,6 +65,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           export CMAKE_OPTS="-DHISTORIC_STATE=1 ${{ inputs.cmake_options }}"
           echo "CMAKE_OPTS=$CMAKE_OPTS" >> $GITHUB_ENV
+          echo "$VERSION"
       - name: update apt
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test || true 
