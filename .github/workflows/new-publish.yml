@@ -1,0 +1,92 @@
+name: New publish
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - 'v*.*.*'
+      - master
+      - develop
+      - beta
+      - stable
+  workflow_dispatch:
+
+  
+jobs:
+  calculate-version:
+    name: Calculate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version_orig: ${{ steps.set-version.outputs.version_orig }}
+      version_historic: ${{ steps.set-version.outputs.version_historic }}
+      release_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Extract branch name
+        id: extract_branch
+        run: echo "BRANCH_NAME=${GITHUB_REF##*/}" >> $GITHUB_ENV
+
+      - name: Read and calculate version
+        id: set-version
+        run: |
+          VERSION=$(cat VERSION)
+          VERSION=$(bash ./scripts/calculate_version.sh $BRANCH_NAME $VERSION)
+          echo "Calculated version: $VERSION"
+
+          ( test $BRANCH = "stable" && export PRERELEASE=false ) || export PRERELEASE=true
+          echo "VERSION_ORIG=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_HISTORIC=$VERSION-historic" >> $GITHUB_ENV
+          echo "PRERELEASE=$PRERELEASE" >> $GITHUB_ENV
+
+          echo "::set-output name=version_orig::$VERSION"
+          echo "::set-output name=version_historic::$VERSION-historic"
+          
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.set-version.outputs.version_orig }}
+          release_name: ${{ steps.set-version.outputs.version_orig }}
+          draft: false
+          prerelease: ${{ env.PRERELEASE }}
+
+  build:
+    needs: calculate-version
+    uses: ./.github/workflows/setup-build-publish.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+      image_version: ${{ needs.calculate-version.outputs.version_orig }}
+      build_type: "RelWithDebInfo"
+      node_type: core
+      release_url: ${{ needs.calculate-version.outputs.release_url }}
+    secrets: inherit
+
+  build-historic:
+    needs: calculate-version
+    uses: ./.github/workflows/setup-build-publish.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+      image_version: ${{ needs.calculate-version.outputs.version_historic }}
+      build_type: "RelWithDebInfo"
+      node_type: historic
+      release_url: ${{ needs.calculate-version.outputs.release_url }}
+    secrets: inherit
+
+  functional-tests:
+    uses: ./.github/workflows/functional-tests.yml
+    name: Functional testing for orig build
+    needs: [calculate-version, build]
+    with:
+      version: ${{ needs.calculate-version.outputs.version_orig }}
+    secrets: inherit
+
+  functional-tests-historic:
+    uses: ./.github/workflows/functional-tests.yml
+    name: Functional testing for historic build
+    needs: [calculate-version, build-historic]
+    with:
+      version: ${{ needs.calculate-version.outputs.version_historic }}
+    secrets: inherit

@@ -18,6 +18,10 @@ on:
         type: string
         description: 'Build type of skaled binary'
         required: true
+      release_url:
+        type: string
+        description: 'URL of the github release'
+        required: false
       node_type:
         type: string
         description: 'Node type of skaled build'
@@ -142,6 +146,7 @@ jobs:
           cd build
           cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE $CMAKE_OPTS ..
           cd ..
+
       - name: Build all
         run: |
           export CC=gcc-11
