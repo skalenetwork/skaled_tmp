@@ -50,7 +50,7 @@ jobs:
         if: inputs.node_type != 'historic'
         run: |
           [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
-          [[ $RAW_NAME = "true" ]] && export VERSION=${{ inputs.image_version }} || \ 
+          [[ $RAW_NAME = "true" ]] && export VERSION=${{ inputs.image_version }} || \
             export VERSION=${{ inputs.image_version }}-$VERSION_SUFFIX
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           export CMAKE_OPTS="${{ inputs.cmake_options }}"
