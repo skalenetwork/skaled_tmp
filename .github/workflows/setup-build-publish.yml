@@ -28,7 +28,7 @@ on:
         required: true
       raw_name:
         type: boolean
-        description: 'Raw version name without build_type'
+        description: 'Use image version for image name'
         default: false
     secrets:
       DOCKER_USERNAME:
@@ -59,7 +59,7 @@ jobs:
         if: inputs.node_type == 'historic'
         run: |
           [[ $BUILD_TYPE = "Debug" ]] && export VERSION_SUFFIX=debug || export VERSION_SUFFIX=release
-          [[ $RAW_NAME = "True" ]] && export VERSION=${{ inputs.image_version }}-historic || \
+          [[ $RAW_NAME = "True" ]] && export VERSION=${{ inputs.image_version }} || \
             export VERSION=${{ inputs.image_version }}-$VERSION_SUFFIX-historic
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           export CMAKE_OPTS="-DHISTORIC_STATE=1 ${{ inputs.cmake_options }}"
