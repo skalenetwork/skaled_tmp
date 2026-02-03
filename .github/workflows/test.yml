@@ -38,7 +38,7 @@ jobs:
         run: |
           sudo apt install autoconf build-essential cmake libtool texinfo wget yasm flex bison btrfs-progs python3 python3-pip gawk git vim doxygen 
           sudo apt install make build-essential cmake pkg-config libgnutls28-dev libssl-dev unzip zlib1g-dev libgcrypt20-dev gcc-11 g++-11 gperf clang-format gnutls-dev
-          sudo apt install nettle-dev libhiredis-dev redis-server google-perftools libgoogle-perftools-dev lcov 
+          sudo apt install nettle-dev libhiredis-dev redis-server libunwind-dev google-perftools libgoogle-perftools-dev lcov 
           sudo apt-get install libv8-dev
           sudo apt update
       - name: Use g++-11 and gcov-11 by default
