@@ -30,13 +30,6 @@ jobs:
           ACTIONS_ALLOW_UNSECURE_COMMANDS: true
       - name: checkout
         uses: actions/checkout@v2
-      - name: Cache apt packages
-        uses: actions/cache@v4.2.0
-        with:
-          path: |
-            /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-cache
-          ttl: 1000000 # purge cache every 1000000 seconds (10 days). This is to pull updated packages
       - name: update apt
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test || true
@@ -95,28 +88,7 @@ jobs:
           ls -1
           git submodule update --init --recursive
 
-      - name: Prepare ccache timestamp
-        id: ccache_cache_timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-      - name: Ccache cache files
-        uses: actions/cache@v4.2.0
-        with:
-          path: .ccache
-          key: ${ { matrix.config.name } }-ccache-${ { steps.ccache_cache_timestamp.outputs.timestamp } }
-          restore-keys: |
-            ${ { matrix.config.name } }-ccache-
-      - name: Update gcc-11
-        run: |
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
-      - name: Configure ccache cache size, zero ccache counters and print ccache stats before start
-        run: |
-          ccache --max-size=15G
-          ccache -z
-          ccache --show-stats
+
       - name: Build dependencies
         run: |
           export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
@@ -138,9 +110,6 @@ jobs:
           # -DCMAKE_C_FLAGS=-O3 -DCMAKE_CXX_FLAGS=-O3
           cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DCOVERAGE=$CODE_COVERAGE ..
           cd ..
-      - name: Print ccache stats for deps
-        run: |
-          ccache --show-stats
       - name: Build all
         run: |
           export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
@@ -149,9 +118,6 @@ jobs:
           cd build
           make testeth -j$(nproc)
           cd ..
-      - name: Print ccache stats after full build
-        run : |
-          ccache --show-stats
       # first run with verbosity 1. If test fails, rerun with verbosity 4
       # we specifically run each test for easier log review
       - name: Testeth verbosity 1
@@ -276,9 +242,6 @@ jobs:
           cd build_historic
           make testeth -j$(nproc)          
           cd ..
-      - name: Print ccache stats after full historic build
-        run : |
-          ccache --show-stats
       - name: Testeth historic
         run : |
           cd build_historic/test
